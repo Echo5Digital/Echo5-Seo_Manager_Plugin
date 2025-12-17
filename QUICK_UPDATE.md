@@ -1,6 +1,23 @@
 # Quick Update Publishing Guide
 
-## TL;DR - Publish an Update in 5 Steps
+## 🔥 FASTEST WAY - One Command Auto-Release
+
+```bash
+# EVERYTHING automated in ONE command!
+.\release.ps1 -AutoRelease -Notes "Bug fixes and improvements"
+
+# Done! Script does EVERYTHING:
+# ✅ Updates version numbers
+# ✅ Creates ZIP package
+# ✅ Commits to git
+# ✅ Pushes to GitHub
+# ✅ Creates GitHub release
+# 🎉 All sites notified within 12 hours!
+```
+
+---
+
+## Manual Method - 5 Steps
 
 ```bash
 # 1. Update version numbers in echo5-seo-exporter.php
@@ -17,6 +34,21 @@ git push origin main
 gh release create v1.0.X --title "Version 1.0.X" --notes "Your changelog here"
 
 # 5. Done! All sites will see the update within 12 hours
+```
+
+---
+
+## Semi-Automated - Use Release Script
+
+```bash
+# 1. Run script (updates versions & creates ZIP)
+.\release.ps1
+
+# 2. Follow the prompts, then manually:
+git add .
+git commit -m "Version 1.0.X"
+git push origin main
+gh release create v1.0.X --title "Version 1.0.X" --notes "..."
 ```
 
 ## Files to Update

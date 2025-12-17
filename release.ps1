@@ -26,7 +26,16 @@ param(
     [string]$Type = 'patch',
     
     [Parameter()]
-    [string]$Version = $null
+    [string]$Version = $null,
+    
+    [Parameter()]
+    [switch]$AutoRelease,
+    
+    [Parameter()]
+    [string]$Notes = $null,
+    
+    [Parameter()]
+    [switch]$SkipZip
 )
 
 # Configuration
@@ -202,12 +211,166 @@ function New-PluginPackage {
     Write-Host "`n✓ Package created: $ZipName ($([math]::Round($fileSize, 2)) KB)" -ForegroundColor Green
 }
 
+# Function to check if git is clean
+function Test-GitClean {
+    $status = git status --porcelain
+    return [string]::IsNullOrWhiteSpace($status)
+}
+
+# Function to check if GitHub CLI is installed
+function Test-GitHubCLI {
+    try {
+        $null = gh --version
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+# Function to get release notes
+function Get-ReleaseNotes {
+    param(
+        [string]$Version,
+        [string]$ProvidedNotes
+    )
+    
+    if ($ProvidedNotes) {
+        return $ProvidedNotes
+    }
+    
+    Write-Host "`nEnter release notes (press Enter twice when done):" -ForegroundColor Cyan
+    $notes = @()
+    $emptyCount = 0
+    
+    while ($emptyCount -lt 2) {
+        $line = Read-Host
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            $emptyCount++
+        } else {
+            $emptyCount = 0
+            $notes += $line
+        }
+    }
+    
+    if ($notes.Count -eq 0) {
+        return "Version $Version release"
+    }
+    
+    return ($notes -join "`n")
+}
+
+# Function to create git commit and push
+function Invoke-GitRelease {
+    param(
+        [string]$Version,
+        [string]$ZipFile
+    )
+    
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "         GIT COMMIT & PUSH" -ForegroundColor Cyan
+    Write-Host "========================================`n" -ForegroundColor Cyan
+    
+    # Add all changes
+    Write-Host "Adding changes to git..." -ForegroundColor Cyan
+    git add .
+    
+    # Commit
+    Write-Host "Committing changes..." -ForegroundColor Cyan
+    git commit -m "Version $Version"
+     (unless skipped)
+    $zipFile = "$PluginSlug-v$newVersion.zip"
+    if (-not $SkipZip) {
+        New-PluginPackage -Version $newVersion
+    } else {
+        Write-Host "`nSkipping ZIP package creation..." -ForegroundColor Yellow
+        $zipFile = $null
+    }
+    
+    # Auto-release if requested
+    $autoReleased = $false
+    if ($AutoRelease) {
+        Write-Host "`n" -NoNewline
+        
+        # Check if GitHub CLI is installed
+        if (-not (Test-GitHubCLI)) {
+            Write-Host "WARNING: GitHub CLI (gh) is not installed. Cannot auto-release." -ForegroundColor Yellow
+            Write-Host "Install from: https://cli.github.com/" -ForegroundColor Yellow
+            Write-Host "Continuing with manual release process..." -ForegroundColor Yellow
+        } else {
+            # Get release notes
+            $releaseNotes = Get-ReleaseNotes -Version $newVersion -ProvidedNotes $Notes
+            
+            # Commit and push
+            Invoke-GitRelease -Version $newVersion -ZipFile $zipFile
+            
+            # Create GitHub release
+            New-GitHubRelease -Version $newVersion -Notes $releaseNotes -ZipFile $zipFile
+            
+            $autoReleased = $true
+        }
+    }
+    
+    # Show summary
+    Show-Summary -OldVersion $currentVersion -NewVersion $newVersion -ZipFile $zipFile -AutoReleased $autoReleased
+    
+} catch {
+    Write-Host "`nERROR: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Stack Trace: $($_.ScriptStackTrac
+    Write-Host "Pushing to GitHub..." -ForegroundColor Cyan
+    git push origin main
+    
+    if ($LASTEXITCODE -ne 0) {
+        throw "Git push failed"
+    }
+    
+    Write-Host "✓ Pushed to GitHub" -ForegroundColor Green
+}
+
+# Function to create GitHub release
+function New-GitHubRelease {
+    param(
+        [string]$Version,
+        [string]$Notes,
+        [string]$ZipFile
+    )
+    
+    Write-Host "`n========================================" -ForegroundColor Cyan
+    Write-Host "         GITHUB RELEASE" -ForegroundColor Cyan
+    Write-Host "========================================`n" -ForegroundColor Cyan
+    
+    $tag = "v$Version"
+    
+    # Create release
+    Write-Host "Creating GitHub release $tag..." -ForegroundColor Cyan
+    
+    if (Test-Path $ZipFile) {
+        # Create release with zip file
+        gh release create $tag `
+            --title "Version $Version" `
+            --notes $Notes `
+            $ZipFile
+    } else {
+        # Create release without zip file
+        gh release create $tag `
+            --title "Version $Version" `
+            --notes $Notes
+    }
+    
+    if ($LASTEXITCODE -ne 0) {
+        throw "GitHub release creation failed"
+    }
+    
+    Write-Host "✓ GitHub release created: $tag" -ForegroundColor Green
+    Write-Host "✓ Release URL: https://github.com/Echo5Digital/Echo5-Seo_Manager_Plugin/releases/tag/$tag" -ForegroundColor Green
+}
+
 # Function to display summary
 function Show-Summary {
     param(
         [string]$OldVersion,
         [string]$NewVersion,
-        [string]$ZipFile
+        [string]$ZipFile,
+        [bool]$AutoReleased
     )
     
     Write-Host "`n========================================" -ForegroundColor Cyan
@@ -215,16 +378,27 @@ function Show-Summary {
     Write-Host "========================================" -ForegroundColor Cyan
     Write-Host "Old Version:  $OldVersion" -ForegroundColor Yellow
     Write-Host "New Version:  $NewVersion" -ForegroundColor Green
-    Write-Host "Package:      $ZipFile" -ForegroundColor Green
-    Write-Host "========================================`n" -ForegroundColor Cyan
+    if ($ZipFile) {
+        Write-Host "Package:      $ZipFile" -ForegroundColor Green
+    }
     
-    Write-Host "Next Steps:" -ForegroundColor Cyan
-    Write-Host "1. Review changes with: git diff" -ForegroundColor White
-    Write-Host "2. Update CHANGELOG.md with version changes" -ForegroundColor White
-    Write-Host "3. Commit: git add . && git commit -m 'Version $NewVersion'" -ForegroundColor White
-    Write-Host "4. Push: git push origin main" -ForegroundColor White
-    Write-Host "5. Create release: gh release create v$NewVersion --title 'Version $NewVersion' --notes 'Release notes here'" -ForegroundColor White
-    Write-Host ""
+    if ($AutoReleased) {
+        Write-Host "`nAuto-Release: COMPLETED ✓" -ForegroundColor Green
+        Write-Host "  • Committed to git" -ForegroundColor White
+        Write-Host "  • Pushed to GitHub" -ForegroundColor White
+        Write-Host "  • Created GitHub release" -ForegroundColor White
+        Write-Host "`nRelease URL: https://github.com/Echo5Digital/Echo5-Seo_Manager_Plugin/releases/tag/v$NewVersion" -ForegroundColor Cyan
+        Write-Host "`nAll sites will receive update notification within 12 hours! 🎉" -ForegroundColor Green
+    } else {
+        Write-Host "`nNext Steps:" -ForegroundColor Cyan
+        Write-Host "1. Review changes with: git diff" -ForegroundColor White
+        Write-Host "2. Update CHANGELOG.md with version changes" -ForegroundColor White
+        Write-Host "3. Commit: git add . && git commit -m 'Version $NewVersion'" -ForegroundColor White
+        Write-Host "4. Push: git push origin main" -ForegroundColor White
+        Write-Host "5. Create release: gh release create v$NewVersion --title 'Version $NewVersion' --notes 'Release notes here'" -ForegroundColor White
+    }
+    
+    Write-Host "========================================`n" -ForegroundColor Cyan
 }
 
 # Main execution

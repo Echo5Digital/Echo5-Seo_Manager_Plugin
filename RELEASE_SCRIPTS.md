@@ -11,7 +11,9 @@ Both scripts do the same thing with the same syntax.
 
 ## Usage
 
-### Increment Patch Version (default)
+### Basic Usage (Manual Release)
+
+#### Increment Patch Version (default)
 ```bash
 # Windows PowerShell
 .\release.ps1
@@ -21,7 +23,7 @@ Both scripts do the same thing with the same syntax.
 ```
 Result: `1.0.0` → `1.0.1`
 
-### Increment Minor Version
+#### Increment Minor Version
 ```bash
 # Windows PowerShell
 .\release.ps1 -Type minor
@@ -31,7 +33,7 @@ Result: `1.0.0` → `1.0.1`
 ```
 Result: `1.0.5` → `1.1.0`
 
-### Increment Major Version
+#### Increment Major Version
 ```bash
 # Windows PowerShell
 .\release.ps1 -Type major
@@ -41,7 +43,7 @@ Result: `1.0.5` → `1.1.0`
 ```
 Result: `1.5.3` → `2.0.0`
 
-### Set Specific Version
+#### Set Specific Version
 ```bash
 # Windows PowerShell
 .\release.ps1 -Version "2.0.0"
@@ -50,6 +52,56 @@ Result: `1.5.3` → `2.0.0`
 ./release.sh 2.0.0
 ```
 Result: Any version → `2.0.0`
+
+---
+
+### 🚀 Auto-Release (FULLY AUTOMATED)
+
+**One command does everything:**
+- ✅ Updates version numbers
+- ✅ Creates ZIP package
+- ✅ Commits changes to git
+- ✅ Pushes to GitHub
+- ✅ Creates GitHub release
+- ✅ All sites get notified automatically!
+
+#### Auto-Release with Interactive Notes
+```bash
+# Windows PowerShell
+.\release.ps1 -AutoRelease
+
+# Linux/Mac
+./release.sh --auto
+```
+Script will prompt you to enter release notes.
+
+#### Auto-Release with Inline Notes
+```bash
+# Windows PowerShell
+.\release.ps1 -AutoRelease -Notes "Bug fixes and performance improvements"
+
+# Linux/Mac
+./release.sh --auto --notes "Bug fixes and performance improvements"
+```
+
+#### Auto-Release Minor Version
+```bash
+# Windows PowerShell
+.\release.ps1 -Type minor -AutoRelease -Notes "Added new features"
+
+# Linux/Mac
+./release.sh minor --auto --notes "Added new features"
+```
+
+#### Auto-Release Without ZIP
+```bash
+# Windows PowerShell
+.\release.ps1 -AutoRelease -SkipZip
+
+# Linux/Mac
+./release.sh --auto --skip-zip
+```
+Uses GitHub's automatic zipball only.
 
 ## What the Scripts Do
 
@@ -84,7 +136,9 @@ echo5-seo-manager-v1.0.1.zip
     └── readme.txt
 ```
 
-## Example Workflow
+## Example Workflows
+
+### Manual Workflow (Step by Step)
 
 ```bash
 # 1. Run release script
@@ -111,9 +165,114 @@ git push origin main
 gh release create v1.0.1 \
   --title "Version 1.0.1" \
   --notes "Bug fixes and improvements"
+```
 
-# 5. Upload zip (optional - updater uses GitHub's automatic zipball)
-gh release upload v1.0.1 echo5-seo-manager-v1.0.1.zip
+### 🔥 Auto-Release Workflow (ONE COMMAND!)
+
+```bash
+# Single command does EVERYTHING!
+.\release.ps1 -AutoRelease -Notes "Bug fixes and security updates"
+
+# Output:
+# =Requirements for Auto-Release
+
+1. **GitHub CLI (gh)** must be installed:
+   - Windows: `winget install GitHub.cli`
+   - Mac: `brew install gh`
+   - Linux: See https://cli.github.com/
+2. **Authenticated with GitHub**: Run `gh auth login` if not already logged in
+3. **Git repository** must be initialized and connected to GitHub
+
+Check if ready:
+```bash
+# Check if gh is installed
+gh --version
+
+# Check if authenticated
+gh auth status
+```
+
+## Troubleshooting
+
+### PowerShell Execution Policy Error
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+### GitHub CLI Not Found
+```bash
+# Install GitHub CLI
+# Windows
+winget install GitHub.cli
+
+# Mac
+brew install gh
+
+# Linux
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update
+sudo apt install gh
+```
+
+### Not Authenticated with GitHub
+```bash
+gh auth login
+# Follow the prompts to authenticate
+```
+
+### Bash Script Not Found
+Make sure you're in the plugin directory:
+```bash
+cd /path/to/Echo5-Seo_Manager_Plugin
+./release.sh
+```
+
+### Version Not Found Error
+Ensure `echo5-seo-exporter.php` exists and contains:
+```php
+* Version: 1.0.0
+define('ECHO5_SEO_VERSION', '1.0.0');
+```
+
+### Git Push Failed
+Ensure you have push permissions and are on the main branch:
+```bash
+git status
+git branch
+gh auth status
+# Adding changes to git...
+# Committing changes...
+# ✓ Committed: Version 1.0.1
+# Pushing to GitHub...
+# ✓ Pushed to GitHub
+# 
+# ========================================
+#          GITHUB RELEASE
+# ========================================
+# 
+# Creating GitHub release v1.0.1...
+# ✓ GitHub release created: v1.0.1
+# ✓ Release URL: https://github.com/Echo5Digital/Echo5-Seo_Manager_Plugin/releases/tag/v1.0.1
+# 
+# ========================================
+#              RELEASE SUMMARY
+# ========================================
+# Old Version:  1.0.0
+# New Version:  1.0.1
+# Package:      echo5-seo-manager-v1.0.1.zip
+# 
+# Auto-Release: COMPLETED ✓
+#   • Committed to git
+#   • Pushed to GitHub
+#   • Created GitHub release
+# 
+# Release URL: https://github.com/Echo5Digital/Echo5-Seo_Manager_Plugin/releases/tag/v1.0.1
+# 
+# All sites will receive update notification within 12 hours! 🎉
+# ========================================
+
+# Done! All sites will be notified automatically!
 ```
 
 ## Making Scripts Executable (Linux/Mac)
