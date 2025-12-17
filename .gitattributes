@@ -1,4 +1,7 @@
-# Git attributes for proper release packaging
+ 
+ 
+ 
+ # Git attributes for proper release packaging
 
 # Exclude development files from plugin releases
 /.gitattributes export-ignore
