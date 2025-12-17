@@ -165,15 +165,54 @@ curl -X GET "<?php echo esc_url($api_base); ?>/content/all?per_page=50" \
                     delete_transient('echo5_seo_updater');
                     delete_site_transient('update_plugins');
                     ?>
-                    <div class="notice notice-success inline"><p>✓ Update cache cleared! Go to Dashboard > Updates to check for new versions.</p></div>
+                    <div class="notice notice-success inline"><p>✓ Update cache cleared!</p></div>
                 <?php endif; ?>
                 
-                <form method="get" style="margin-top: 15px;">
-                    <input type="hidden" name="page" value="echo5-seo-manager">
-                    <?php wp_nonce_field('echo5_clear_cache'); ?>
-                    <input type="hidden" name="clear_cache" value="1">
-                    <button type="submit" class="button">Clear Update Cache</button>
-                </form>
+                <?php if (isset($_GET['check_updates']) && check_admin_referer('echo5_check_updates')): ?>
+                    <?php 
+                    // Clear cache first
+                    delete_transient('echo5_seo_updater');
+                    delete_site_transient('update_plugins');
+                    
+                    // Force WordPress to check for updates
+                    wp_clean_plugins_cache(true);
+                    wp_update_plugins();
+                    
+                    // Get latest update info
+                    $update_plugins = get_site_transient('update_plugins');
+                    $plugin_file = 'Echo5-Seo_Manager_Plugin/echo5-seo-exporter.php';
+                    
+                    if (isset($update_plugins->response[$plugin_file])) {
+                        $new_version = $update_plugins->response[$plugin_file]->new_version;
+                        ?>
+                        <div class="notice notice-warning inline">
+                            <p><strong>🎉 Update Available!</strong> Version <?php echo esc_html($new_version); ?> is available. 
+                            <a href="<?php echo esc_url(admin_url('update-core.php')); ?>">Go to Updates</a></p>
+                        </div>
+                        <?php
+                    } else {
+                        ?>
+                        <div class="notice notice-success inline"><p>✓ You are running the latest version!</p></div>
+                        <?php
+                    }
+                    ?>
+                <?php endif; ?>
+                
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <form method="get">
+                        <input type="hidden" name="page" value="echo5-seo-manager">
+                        <?php wp_nonce_field('echo5_check_updates'); ?>
+                        <input type="hidden" name="check_updates" value="1">
+                        <button type="submit" class="button button-primary">🔍 Check for Updates Now</button>
+                    </form>
+                    
+                    <form method="get">
+                        <input type="hidden" name="page" value="echo5-seo-manager">
+                        <?php wp_nonce_field('echo5_clear_cache'); ?>
+                        <input type="hidden" name="clear_cache" value="1">
+                        <button type="submit" class="button">Clear Update Cache</button>
+                    </form>
+                </div>
             </div>
             
             <form method="post" action="options.php" style="margin-top: 20px;">
