@@ -244,4 +244,14 @@ class Echo5_SEO_Updater {
     public function clear_cache() {
         delete_transient($this->cache_key);
     }
+    
+    /**
+     * Force check for updates (for debugging)
+     */
+    public function force_check() {
+        $this->cache_allowed = false;
+        delete_transient($this->cache_key);
+        delete_site_transient('update_plugins');
+        wp_update_plugins();
+    }
 }

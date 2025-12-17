@@ -138,6 +138,44 @@ curl -X GET "<?php echo esc_url($api_base); ?>/content/all?per_page=50" \
   -H "X-API-Key: <?php echo esc_attr($api_key); ?>"</pre>
             </div>
             
+            <div class="card" style="max-width: 800px; margin-top: 20px;">
+                <h2>🔄 Auto-Updater</h2>
+                <p>This plugin supports automatic updates from GitHub releases.</p>
+                
+                <table class="form-table">
+                    <tr>
+                        <th>Current Version:</th>
+                        <td><strong><?php echo esc_html(ECHO5_SEO_VERSION); ?></strong></td>
+                    </tr>
+                    <tr>
+                        <th>GitHub Repository:</th>
+                        <td><a href="https://github.com/Echo5Digital/Echo5-Seo_Manager_Plugin" target="_blank">Echo5Digital/Echo5-Seo_Manager_Plugin</a></td>
+                    </tr>
+                    <tr>
+                        <th>Update Check:</th>
+                        <td>
+                            Automatic (every 12 hours)<br>
+                            <small>Go to <strong>Dashboard > Updates</strong> to manually check for updates</small>
+                        </td>
+                    </tr>
+                </table>
+                
+                <?php if (isset($_GET['clear_cache']) && check_admin_referer('echo5_clear_cache')): ?>
+                    <?php 
+                    delete_transient('echo5_seo_updater');
+                    delete_site_transient('update_plugins');
+                    ?>
+                    <div class="notice notice-success inline"><p>✓ Update cache cleared! Go to Dashboard > Updates to check for new versions.</p></div>
+                <?php endif; ?>
+                
+                <form method="get" style="margin-top: 15px;">
+                    <input type="hidden" name="page" value="echo5-seo-manager">
+                    <?php wp_nonce_field('echo5_clear_cache'); ?>
+                    <input type="hidden" name="clear_cache" value="1">
+                    <button type="submit" class="button">Clear Update Cache</button>
+                </form>
+            </div>
+            
             <form method="post" action="options.php" style="margin-top: 20px;">
                 <?php settings_fields('echo5_seo_settings'); ?>
                 

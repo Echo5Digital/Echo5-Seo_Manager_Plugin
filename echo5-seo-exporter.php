@@ -3,7 +3,7 @@
  * Plugin Name: Echo5 Seo Manager Plugin
  * Plugin URI: https://echo5digital.com
  * Description: Exports complete SEO data via REST API for Echo5 SEO Management Platform
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: Echo5 Digital
  * Author URI: https://echo5digital.com
  * License: GPL v2 or later
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('ECHO5_SEO_VERSION', '1.0.2');
+define('ECHO5_SEO_VERSION', '1.0.3');
 define('ECHO5_SEO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ECHO5_SEO_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -33,6 +33,7 @@ require_once ECHO5_SEO_PLUGIN_DIR . 'admin/class-settings.php';
 class Echo5_SEO_Exporter {
     
     private static $instance = null;
+    private static $plugin_file = null;
     private $api_handler;
     private $data_exporter;
     private $security;
@@ -47,6 +48,13 @@ class Echo5_SEO_Exporter {
             self::$instance = new self();
         }
         return self::$instance;
+    }
+    
+    /**
+     * Set plugin file
+     */
+    public static function set_plugin_file($file) {
+        self::$plugin_file = $file;
     }
     
     /**
@@ -65,7 +73,7 @@ class Echo5_SEO_Exporter {
         $this->data_exporter = new Echo5_SEO_Data_Exporter();
         $this->api_handler = new Echo5_SEO_API_Handler($this->data_exporter, $this->security);
         $this->settings = new Echo5_SEO_Settings();
-        $this->updater = new Echo5_SEO_Updater(__FILE__);
+        $this->updater = new Echo5_SEO_Updater(self::$plugin_file);
         
         // Register hooks
         add_action('rest_api_init', array($this->api_handler, 'register_routes'));
@@ -117,6 +125,7 @@ class Echo5_SEO_Exporter {
 
 // Initialize plugin
 function echo5_seo_exporter_init() {
+    Echo5_SEO_Exporter::set_plugin_file(__FILE__);
     return Echo5_SEO_Exporter::get_instance();
 }
 
