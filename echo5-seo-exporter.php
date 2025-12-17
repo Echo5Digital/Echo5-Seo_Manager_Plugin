@@ -24,6 +24,7 @@ define('ECHO5_SEO_PLUGIN_URL', plugin_dir_url(__FILE__));
 require_once ECHO5_SEO_PLUGIN_DIR . 'includes/class-api-handler.php';
 require_once ECHO5_SEO_PLUGIN_DIR . 'includes/class-data-exporter.php';
 require_once ECHO5_SEO_PLUGIN_DIR . 'includes/class-security.php';
+require_once ECHO5_SEO_PLUGIN_DIR . 'includes/class-updater.php';
 require_once ECHO5_SEO_PLUGIN_DIR . 'admin/class-settings.php';
 
 /**
@@ -36,6 +37,7 @@ class Echo5_SEO_Exporter {
     private $data_exporter;
     private $security;
     private $settings;
+    private $updater;
     
     /**
      * Get singleton instance
@@ -63,6 +65,7 @@ class Echo5_SEO_Exporter {
         $this->data_exporter = new Echo5_SEO_Data_Exporter();
         $this->api_handler = new Echo5_SEO_API_Handler($this->data_exporter, $this->security);
         $this->settings = new Echo5_SEO_Settings();
+        $this->updater = new Echo5_SEO_Updater(__FILE__);
         
         // Register hooks
         add_action('rest_api_init', array($this->api_handler, 'register_routes'));

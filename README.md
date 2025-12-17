@@ -46,6 +46,12 @@ This plugin eliminates web scraping issues by providing direct access to WordPre
 - 🎯 Selective field retrieval
 - 🗜️ Gzip compression ready
 
+### Auto-Updates:
+- 🔄 GitHub-powered automatic updates
+- 📢 Update notifications in WordPress admin
+- 🎯 One-click updates from plugin dashboard
+- 🔔 Always get the latest features and security fixes
+
 ## 🚀 Installation
 
 1. **Upload Plugin:**
@@ -254,6 +260,14 @@ console.log(`Fetched ${content.data.length} pages/posts`);
 4. **Enable rate limiting** to prevent abuse
 5. **Monitor failed attempts** in WordPress error logs
 
+## � Auto-Updates
+
+The plugin includes automatic update functionality via GitHub. Sites with the plugin installed will automatically receive update notifications when you publish a new release.
+
+**For Developers**: See [UPDATER_GUIDE.md](UPDATER_GUIDE.md) for detailed instructions on publishing updates.
+
+**For Site Admins**: Updates appear in your WordPress admin dashboard just like any other plugin. Simply click "Update now" when available.
+
 ## 📞 Support
 
 For issues or questions about this plugin, contact Echo5 Digital support.
@@ -264,6 +278,7 @@ GPL v2 or later
 
 ## 🚀 Roadmap
 
+- [x] GitHub-powered automatic updates
 - [ ] WebSocket support for real-time updates
 - [ ] Batch update endpoints
 - [ ] Custom field mapping
