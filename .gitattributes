@@ -5,6 +5,10 @@
 /.gitignore export-ignore
 /UPDATER_GUIDE.md export-ignore
 /QUICK_UPDATE.md export-ignore
+/RELEASE_SCRIPTS.md export-ignore
+/CHANGELOG.md export-ignore
+/release.ps1 export-ignore
+/release.sh export-ignore
 /.git export-ignore
 /.github export-ignore
 
