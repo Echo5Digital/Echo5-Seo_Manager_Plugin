@@ -1,13 +1,13 @@
 <?php
 /**
- * Plugin Name: Echo5 SEO Data Exporter
+ * Plugin Name: Echo5 Seo Manager Plugin
  * Plugin URI: https://echo5digital.com
  * Description: Exports complete SEO data via REST API for Echo5 SEO Management Platform
  * Version: 1.0.0
  * Author: Echo5 Digital
  * Author URI: https://echo5digital.com
  * License: GPL v2 or later
- * Text Domain: echo5-seo-exporter
+ * Text Domain: echo5-seo-manager
  */
 
 // Prevent direct access

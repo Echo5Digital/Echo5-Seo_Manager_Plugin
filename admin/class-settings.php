@@ -10,10 +10,10 @@ class Echo5_SEO_Settings {
      */
     public function add_settings_page() {
         add_options_page(
-            'Echo5 SEO Exporter Settings',
-            'Echo5 SEO Exporter',
+            'Echo5 Seo Manager Settings',
+            'Echo5 Seo Manager',
             'manage_options',
-            'echo5-seo-exporter',
+            'echo5-seo-manager',
             array($this, 'render_settings_page')
         );
     }
@@ -56,7 +56,7 @@ class Echo5_SEO_Settings {
             
             <div class="card" style="max-width: 800px; margin-top: 20px;">
                 <h2>🔑 API Key</h2>
-                <p>Use this API key to authenticate requests to the Echo5 SEO Exporter API.</p>
+                <p>Use this API key to authenticate requests to the Echo5 Seo Manager API.</p>
                 
                 <table class="form-table">
                     <tr>

@@ -1,4 +1,4 @@
-=== Echo5 SEO Data Exporter ===
+=== Echo5 Seo Manager Plugin ===
 Contributors: echo5digital
 Tags: seo, api, rest-api, export, seo-data
 Requires at least: 5.0
@@ -12,7 +12,7 @@ Export complete SEO data via REST API for Echo5 SEO Management Platform. No scra
 
 == Description ==
 
-Echo5 SEO Data Exporter provides secure REST API endpoints to export your WordPress site's content and SEO data directly to the Echo5 SEO Management Platform.
+Echo5 Seo Manager Plugin provides secure REST API endpoints to export your WordPress site's content and SEO data directly to the Echo5 SEO Management Platform.
 
 **Why use this plugin instead of web scraping?**
 
@@ -54,9 +54,9 @@ Echo5 SEO Data Exporter provides secure REST API endpoints to export your WordPr
 
 == Installation ==
 
-1. Upload the plugin files to `/wp-content/plugins/echo5-seo-exporter`
+1. Upload the plugin files to `/wp-content/plugins/echo5-seo-manager`
 2. Activate the plugin through the 'Plugins' screen in WordPress
-3. Go to Settings > Echo5 SEO Exporter to configure
+3. Go to Settings > Echo5 Seo Manager to configure
 4. Copy your API key and add it to your Echo5 platform
 
 == Frequently Asked Questions ==
@@ -95,4 +95,4 @@ The plugin automatically detects and exports data from Yoast SEO, Rank Math, and
 == Upgrade Notice ==
 
 = 1.0.0 =
-Initial release of Echo5 SEO Data Exporter.
+Initial release of Echo5 Seo Manager Plugin.

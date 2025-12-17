@@ -1,4 +1,4 @@
-# Echo5 SEO Data Exporter - WordPress Plugin
+# Echo5 Seo Manager Plugin - WordPress Plugin
 
 A powerful WordPress plugin that exports complete SEO data via REST API for the Echo5 SEO Management Platform.
 
@@ -49,15 +49,15 @@ This plugin eliminates web scraping issues by providing direct access to WordPre
 ## 🚀 Installation
 
 1. **Upload Plugin:**
-   - Upload the `echo5-seo-exporter` folder to `/wp-content/plugins/`
+   - Upload the `echo5-seo-manager` folder to `/wp-content/plugins/`
    - Or zip the folder and upload via WordPress admin
 
 2. **Activate:**
    - Go to **Plugins** in WordPress admin
-   - Click **Activate** on Echo5 SEO Data Exporter
+   - Click **Activate** on Echo5 Seo Manager Plugin
 
 3. **Configure:**
-   - Go to **Settings > Echo5 SEO Exporter**
+   - Go to **Settings > Echo5 Seo Manager**
    - Copy the API key
    - Configure security settings as needed
 

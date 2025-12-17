@@ -226,6 +226,6 @@ class Echo5_SEO_Security {
         set_transient('echo5_failed_attempts_' . md5($ip), $attempts, 3600);
         
         // Log to WordPress
-        error_log("Echo5 SEO Exporter: Failed API authentication attempt from IP: {$ip}");
+        error_log("Echo5 Seo Manager: Failed API authentication attempt from IP: {$ip}");
     }
 }
