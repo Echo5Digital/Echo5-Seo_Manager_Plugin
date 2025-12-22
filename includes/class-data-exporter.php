@@ -266,10 +266,32 @@ class Echo5_SEO_Data_Exporter {
     }
     
     /**
-     * Smart content block extraction - uses rendered Elementor content or falls back to HTML parsing
+     * Smart content block extraction - fetches the actual rendered page HTML
+     * This mimics what users see in the browser and handles Elementor layouts correctly
      */
     private function extract_content_blocks_smart($post_id, $html_content) {
-        // Try to get Elementor's rendered HTML - this gives us proper document order
+        // Method 1: Fetch the actual rendered page HTML (most accurate for Elementor multi-column layouts)
+        $page_url = get_permalink($post_id);
+        if ($page_url) {
+            $response = wp_remote_get($page_url, array(
+                'timeout' => 15,
+                'sslverify' => false,
+                'user-agent' => 'Echo5-SEO-Manager/1.1.3 (WordPress Plugin)'
+            ));
+            
+            if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+                $rendered_html = wp_remote_retrieve_body($response);
+                if (!empty($rendered_html)) {
+                    // Extract content from main content area only (skip header/footer/sidebar)
+                    $blocks = $this->extract_content_blocks_from_main($rendered_html);
+                    if (!empty($blocks)) {
+                        return $blocks;
+                    }
+                }
+            }
+        }
+        
+        // Method 2: Try Elementor's PHP rendering
         if (class_exists('\Elementor\Plugin') && \Elementor\Plugin::$instance->documents->get($post_id)) {
             $elementor_html = \Elementor\Plugin::$instance->frontend->get_builder_content_for_display($post_id);
             if (!empty($elementor_html)) {
@@ -280,10 +302,102 @@ class Echo5_SEO_Data_Exporter {
             }
         }
         
-        // Fallback to the_content HTML parsing
+        // Method 3: Fallback to the_content HTML parsing
         return $this->extract_content_blocks($html_content);
     }
     
+    /**
+     * Extract content blocks from the main content area of a full page HTML
+     * This skips header, footer, sidebar elements
+     */
+    private function extract_content_blocks_from_main($full_html) {
+        $dom = new DOMDocument();
+        libxml_use_internal_errors(true);
+        $dom->loadHTML('<?xml encoding="UTF-8">' . $full_html);
+        libxml_clear_errors();
+        
+        $xpath = new DOMXPath($dom);
+        
+        // Try to find main content area
+        $main_selectors = array(
+            '//main',
+            '//*[@role="main"]',
+            '//article',
+            '//*[contains(@class, "content")]',
+            '//*[contains(@class, "main-content")]',
+            '//*[contains(@class, "post-content")]',
+            '//*[contains(@class, "entry-content")]',
+            '//*[contains(@class, "page-content")]',
+            '//*[contains(@class, "elementor")]'
+        );
+        
+        $content_node = null;
+        foreach ($main_selectors as $selector) {
+            $nodes = $xpath->query($selector);
+            if ($nodes && $nodes->length > 0) {
+                $content_node = $nodes->item(0);
+                break;
+            }
+        }
+        
+        // Fallback to body
+        if (!$content_node) {
+            $bodies = $xpath->query('//body');
+            if ($bodies && $bodies->length > 0) {
+                $content_node = $bodies->item(0);
+            }
+        }
+        
+        if (!$content_node) {
+            return array();
+        }
+        
+        // Extract blocks from the content area
+        $blocks = array();
+        $seen_texts = array();
+        
+        // Query for headings and paragraphs within the main content
+        $nodes = $xpath->query('.//h1 | .//h2 | .//h3 | .//h4 | .//h5 | .//h6 | .//p', $content_node);
+        
+        foreach ($nodes as $node) {
+            if (count($blocks) >= 100) break;
+            
+            $tag_name = strtolower($node->nodeName);
+            $text = $this->get_node_text($node);
+            
+            // Skip common header/footer text patterns
+            $skip_patterns = array(
+                'hours of operation', 'our location', 'connect with us',
+                'our regular schedule', 'find us on the map', 'contact us',
+                'navigation', 'menu', 'copyright', 'all rights reserved',
+                'privacy policy', 'terms of service', 'follow us'
+            );
+            
+            $text_lower = strtolower($text);
+            $should_skip = false;
+            foreach ($skip_patterns as $pattern) {
+                if (strpos($text_lower, $pattern) !== false) {
+                    $should_skip = true;
+                    break;
+                }
+            }
+            if ($should_skip) continue;
+            
+            // Skip empty or very short content
+            $min_length = ($tag_name === 'p') ? 20 : 10;
+            if (empty($text) || strlen($text) < $min_length) continue;
+            
+            // Skip duplicate content
+            $normalized = $this->normalize_text($text);
+            if (isset($seen_texts[$normalized])) continue;
+            
+            $blocks[] = array('tag' => $tag_name, 'text' => $text);
+            $seen_texts[$normalized] = true;
+        }
+        
+        return $blocks;
+    }
+
     /**
      * Extract content blocks from Elementor JSON in document order (legacy method - kept for reference)
      */
