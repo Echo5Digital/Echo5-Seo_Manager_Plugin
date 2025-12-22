@@ -266,27 +266,26 @@ class Echo5_SEO_Data_Exporter {
     }
     
     /**
-     * Smart content block extraction - uses Elementor JSON if available, otherwise parses HTML
+     * Smart content block extraction - uses rendered Elementor content or falls back to HTML parsing
      */
     private function extract_content_blocks_smart($post_id, $html_content) {
-        // Try Elementor JSON first - it preserves document order perfectly
-        $elementor_data = get_post_meta($post_id, '_elementor_data', true);
-        if (!empty($elementor_data)) {
-            $elementor_json = is_string($elementor_data) ? json_decode($elementor_data, true) : $elementor_data;
-            if (is_array($elementor_json)) {
-                $blocks = $this->extract_elementor_content_blocks($elementor_json);
+        // Try to get Elementor's rendered HTML - this gives us proper document order
+        if (class_exists('\Elementor\Plugin') && \Elementor\Plugin::$instance->documents->get($post_id)) {
+            $elementor_html = \Elementor\Plugin::$instance->frontend->get_builder_content_for_display($post_id);
+            if (!empty($elementor_html)) {
+                $blocks = $this->extract_content_blocks($elementor_html);
                 if (!empty($blocks)) {
                     return $blocks;
                 }
             }
         }
         
-        // Fallback to HTML parsing
+        // Fallback to the_content HTML parsing
         return $this->extract_content_blocks($html_content);
     }
     
     /**
-     * Extract content blocks from Elementor JSON in document order
+     * Extract content blocks from Elementor JSON in document order (legacy method - kept for reference)
      */
     private function extract_elementor_content_blocks($elements, &$blocks = array(), &$seen = array()) {
         if (!is_array($elements)) {

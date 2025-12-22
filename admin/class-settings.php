@@ -145,20 +145,58 @@ curl -X GET "<?php echo esc_url($api_base); ?>/content/all?per_page=50" \
                 <table class="form-table">
                     <tr>
                         <th>Current Version:</th>
-                        <td><strong><?php echo esc_html(ECHO5_SEO_VERSION); ?></strong></td>
+                        <td><strong style="font-size: 1.2em; color: #2271b1;"><?php echo esc_html(ECHO5_SEO_VERSION); ?></strong></td>
+                    </tr>
+                    <tr>
+                        <th>Latest Version:</th>
+                        <td id="latest-version-cell">
+                            <span id="latest-version">Checking...</span>
+                            <span id="update-status" style="margin-left: 10px;"></span>
+                        </td>
                     </tr>
                     <tr>
                         <th>GitHub Repository:</th>
-                        <td><a href="https://github.com/Echo5Digital/Echo5-Seo_Manager_Plugin" target="_blank">Echo5Digital/Echo5-Seo_Manager_Plugin</a></td>
-                    </tr>
-                    <tr>
-                        <th>Update Check:</th>
-                        <td>
-                            Automatic (every 12 hours)<br>
-                            <small>Go to <strong>Dashboard > Updates</strong> to manually check for updates</small>
-                        </td>
+                        <td><a href="https://github.com/Echo5Digital/Echo5-Seo_Manager_Plugin/releases" target="_blank">Echo5Digital/Echo5-Seo_Manager_Plugin</a></td>
                     </tr>
                 </table>
+                
+                <script>
+                (function() {
+                    const currentVersion = '<?php echo esc_js(ECHO5_SEO_VERSION); ?>';
+                    
+                    function checkLatestVersion() {
+                        document.getElementById('latest-version').textContent = 'Checking...';
+                        document.getElementById('update-status').innerHTML = '';
+                        
+                        fetch('https://api.github.com/repos/Echo5Digital/Echo5-Seo_Manager_Plugin/releases/latest')
+                            .then(r => r.json())
+                            .then(data => {
+                                const latestVersion = data.tag_name ? data.tag_name.replace('v', '') : null;
+                                if (latestVersion) {
+                                    document.getElementById('latest-version').innerHTML = '<strong style="font-size: 1.2em;">' + latestVersion + '</strong>';
+                                    
+                                    if (latestVersion === currentVersion) {
+                                        document.getElementById('update-status').innerHTML = '<span style="color: #00a32a;">✓ You are up to date!</span>';
+                                    } else if (latestVersion > currentVersion) {
+                                        document.getElementById('update-status').innerHTML = '<span style="color: #d63638;">⚠️ Update available!</span> ' +
+                                            '<a href="' + data.html_url + '" target="_blank" style="margin-left: 5px;">Download v' + latestVersion + '</a>';
+                                    }
+                                } else {
+                                    document.getElementById('latest-version').textContent = 'Could not fetch';
+                                }
+                            })
+                            .catch(() => {
+                                document.getElementById('latest-version').textContent = 'Error checking';
+                            });
+                    }
+                    
+                    // Check on page load
+                    checkLatestVersion();
+                    
+                    // Expose function for manual check
+                    window.echo5CheckVersion = checkLatestVersion;
+                })();
+                </script>
                 
                 <?php if (isset($_GET['clear_cache']) && check_admin_referer('echo5_clear_cache')): ?>
                     <?php 
@@ -192,21 +230,23 @@ curl -X GET "<?php echo esc_url($api_base); ?>/content/all?per_page=50" \
                         <?php
                     } else {
                         ?>
-                        <div class="notice notice-success inline"><p>✓ You are running the latest version!</p></div>
+                        <div class="notice notice-success inline"><p>✓ WordPress reports you are running the latest version!</p></div>
                         <?php
                     }
                     ?>
                 <?php endif; ?>
                 
-                <div style="margin-top: 15px; display: flex; gap: 10px;">
-                    <form method="get">
+                <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button type="button" class="button button-primary" onclick="window.echo5CheckVersion()">🔍 Check GitHub Version</button>
+                    
+                    <form method="get" style="display: inline;">
                         <input type="hidden" name="page" value="echo5-seo-manager">
                         <?php wp_nonce_field('echo5_check_updates'); ?>
                         <input type="hidden" name="check_updates" value="1">
-                        <button type="submit" class="button button-primary">🔍 Check for Updates Now</button>
+                        <button type="submit" class="button">Check WordPress Updates</button>
                     </form>
                     
-                    <form method="get">
+                    <form method="get" style="display: inline;">
                         <input type="hidden" name="page" value="echo5-seo-manager">
                         <?php wp_nonce_field('echo5_clear_cache'); ?>
                         <input type="hidden" name="clear_cache" value="1">
