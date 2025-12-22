@@ -176,7 +176,8 @@ class Echo5_SEO_Data_Exporter {
         $headings = $this->extract_headings($content);
         
         // Extract content blocks (headings + paragraphs in document order)
-        $content_blocks = $this->extract_content_blocks($content);
+        // Use Elementor JSON data if available (preserves structure), otherwise parse HTML
+        $content_blocks = $this->extract_content_blocks_smart($post->ID, $content);
         
         // Extract images from post_content
         $images = $this->extract_images($content, $post->ID);
@@ -265,7 +266,127 @@ class Echo5_SEO_Data_Exporter {
     }
     
     /**
-     * Extract content blocks (headings + paragraphs) in document order
+     * Smart content block extraction - uses Elementor JSON if available, otherwise parses HTML
+     */
+    private function extract_content_blocks_smart($post_id, $html_content) {
+        // Try Elementor JSON first - it preserves document order perfectly
+        $elementor_data = get_post_meta($post_id, '_elementor_data', true);
+        if (!empty($elementor_data)) {
+            $elementor_json = is_string($elementor_data) ? json_decode($elementor_data, true) : $elementor_data;
+            if (is_array($elementor_json)) {
+                $blocks = $this->extract_elementor_content_blocks($elementor_json);
+                if (!empty($blocks)) {
+                    return $blocks;
+                }
+            }
+        }
+        
+        // Fallback to HTML parsing
+        return $this->extract_content_blocks($html_content);
+    }
+    
+    /**
+     * Extract content blocks from Elementor JSON in document order
+     */
+    private function extract_elementor_content_blocks($elements, &$blocks = array(), &$seen = array()) {
+        if (!is_array($elements)) {
+            return $blocks;
+        }
+        
+        foreach ($elements as $element) {
+            if (count($blocks) >= 100) break;
+            
+            // Check widget type for headings
+            $widget_type = isset($element['widgetType']) ? $element['widgetType'] : '';
+            $settings = isset($element['settings']) ? $element['settings'] : array();
+            
+            // Handle heading widgets
+            if ($widget_type === 'heading') {
+                $text = isset($settings['title']) ? wp_strip_all_tags($settings['title']) : '';
+                $tag = isset($settings['header_size']) ? strtolower($settings['header_size']) : 'h2';
+                if (!empty($text) && strlen($text) >= 10) {
+                    $normalized = $this->normalize_text($text);
+                    if (!isset($seen[$normalized])) {
+                        $blocks[] = array('tag' => $tag, 'text' => trim($text));
+                        $seen[$normalized] = true;
+                    }
+                }
+            }
+            
+            // Handle text-editor widgets (paragraphs)
+            if ($widget_type === 'text-editor') {
+                $editor_content = isset($settings['editor']) ? $settings['editor'] : '';
+                if (!empty($editor_content)) {
+                    // Parse the HTML content to extract paragraphs and headings
+                    $this->parse_editor_content($editor_content, $blocks, $seen);
+                }
+            }
+            
+            // Handle other text widgets
+            $text_widgets = array(
+                'text' => array('text', 'description'),
+                'call-to-action' => array('title', 'description'),
+                'icon-box' => array('title_text', 'description_text'),
+                'image-box' => array('title_text', 'description_text'),
+                'testimonial' => array('testimonial_content'),
+                'blockquote' => array('blockquote_content'),
+            );
+            
+            if (isset($text_widgets[$widget_type])) {
+                foreach ($text_widgets[$widget_type] as $field) {
+                    if (isset($settings[$field]) && !empty($settings[$field])) {
+                        $text = wp_strip_all_tags($settings[$field]);
+                        if (strlen($text) >= 20) {
+                            $normalized = $this->normalize_text($text);
+                            if (!isset($seen[$normalized])) {
+                                $blocks[] = array('tag' => 'p', 'text' => trim($text));
+                                $seen[$normalized] = true;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Recursively process nested elements (sections, columns, etc.)
+            if (isset($element['elements']) && is_array($element['elements'])) {
+                $this->extract_elementor_content_blocks($element['elements'], $blocks, $seen);
+            }
+        }
+        
+        return $blocks;
+    }
+    
+    /**
+     * Parse editor content (rich text) to extract blocks
+     */
+    private function parse_editor_content($html, &$blocks, &$seen) {
+        $dom = new DOMDocument();
+        libxml_use_internal_errors(true);
+        $dom->loadHTML('<?xml encoding="UTF-8">' . $html);
+        libxml_clear_errors();
+        
+        $xpath = new DOMXPath($dom);
+        $nodes = $xpath->query('//h1 | //h2 | //h3 | //h4 | //h5 | //h6 | //p');
+        
+        foreach ($nodes as $node) {
+            if (count($blocks) >= 100) break;
+            
+            $tag_name = strtolower($node->nodeName);
+            $text = $this->get_node_text($node);
+            
+            $min_length = ($tag_name === 'p') ? 20 : 10;
+            if (empty($text) || strlen($text) < $min_length) continue;
+            
+            $normalized = $this->normalize_text($text);
+            if (isset($seen[$normalized])) continue;
+            
+            $blocks[] = array('tag' => $tag_name, 'text' => $text);
+            $seen[$normalized] = true;
+        }
+    }
+
+    /**
+     * Extract content blocks (headings + paragraphs) in document order from HTML
      */
     private function extract_content_blocks($content) {
         $blocks = array();
