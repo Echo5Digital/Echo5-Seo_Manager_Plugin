@@ -322,18 +322,66 @@ class Echo5_SEO_Data_Exporter {
                 }
             }
             
-            // Handle other text widgets
-            $text_widgets = array(
+            // Handle icon-box and image-box widgets specially (title as heading, description as paragraph)
+            if (in_array($widget_type, array('icon-box', 'image-box'))) {
+                // First add the title as a heading
+                if (isset($settings['title_text']) && !empty($settings['title_text'])) {
+                    $title = wp_strip_all_tags($settings['title_text']);
+                    if (strlen($title) >= 5) {
+                        $normalized = $this->normalize_text($title);
+                        if (!isset($seen[$normalized])) {
+                            // Use h3 for icon-box titles (they're usually sub-headings)
+                            $blocks[] = array('tag' => 'h3', 'text' => trim($title));
+                            $seen[$normalized] = true;
+                        }
+                    }
+                }
+                // Then add the description as a paragraph
+                if (isset($settings['description_text']) && !empty($settings['description_text'])) {
+                    $desc = wp_strip_all_tags($settings['description_text']);
+                    if (strlen($desc) >= 20) {
+                        $normalized = $this->normalize_text($desc);
+                        if (!isset($seen[$normalized])) {
+                            $blocks[] = array('tag' => 'p', 'text' => trim($desc));
+                            $seen[$normalized] = true;
+                        }
+                    }
+                }
+            }
+            
+            // Handle call-to-action widgets (title as heading, description as paragraph)
+            if ($widget_type === 'call-to-action') {
+                if (isset($settings['title']) && !empty($settings['title'])) {
+                    $title = wp_strip_all_tags($settings['title']);
+                    if (strlen($title) >= 5) {
+                        $normalized = $this->normalize_text($title);
+                        if (!isset($seen[$normalized])) {
+                            $blocks[] = array('tag' => 'h3', 'text' => trim($title));
+                            $seen[$normalized] = true;
+                        }
+                    }
+                }
+                if (isset($settings['description']) && !empty($settings['description'])) {
+                    $desc = wp_strip_all_tags($settings['description']);
+                    if (strlen($desc) >= 20) {
+                        $normalized = $this->normalize_text($desc);
+                        if (!isset($seen[$normalized])) {
+                            $blocks[] = array('tag' => 'p', 'text' => trim($desc));
+                            $seen[$normalized] = true;
+                        }
+                    }
+                }
+            }
+            
+            // Handle other simple text widgets (all as paragraphs)
+            $simple_text_widgets = array(
                 'text' => array('text', 'description'),
-                'call-to-action' => array('title', 'description'),
-                'icon-box' => array('title_text', 'description_text'),
-                'image-box' => array('title_text', 'description_text'),
                 'testimonial' => array('testimonial_content'),
                 'blockquote' => array('blockquote_content'),
             );
             
-            if (isset($text_widgets[$widget_type])) {
-                foreach ($text_widgets[$widget_type] as $field) {
+            if (isset($simple_text_widgets[$widget_type])) {
+                foreach ($simple_text_widgets[$widget_type] as $field) {
                     if (isset($settings[$field]) && !empty($settings[$field])) {
                         $text = wp_strip_all_tags($settings[$field]);
                         if (strlen($text) >= 20) {
