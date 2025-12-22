@@ -275,46 +275,30 @@ class Echo5_SEO_Data_Exporter {
         libxml_clear_errors();
         
         $xpath = new DOMXPath($dom);
-        $main_content = $xpath->query('//main | //*[@role="main"] | //article | //*[contains(@class, "content")] | //*[contains(@class, "entry-content")] | //body');
-        $target = ($main_content->length > 0) ? $main_content->item(0) : $dom->getElementsByTagName('body')->item(0);
         
-        if (!$target) return $blocks;
+        // Use XPath to find ALL headings and paragraphs in document order
+        // This handles deeply nested Elementor/page builder content
+        $nodes = $xpath->query('//h1 | //h2 | //h3 | //h4 | //h5 | //h6 | //p');
         
         $seen_texts = array();
-        foreach ($target->childNodes as $node) {
-            if ($node->nodeType !== XML_ELEMENT_NODE) continue;
-            $tag_name = strtolower($node->nodeName);
-            
-            if (preg_match('/^h[1-6]$/', $tag_name)) {
-                $text = $this->get_node_text($node);
-                if (!empty($text) && strlen($text) >= 10) {
-                    $normalized = $this->normalize_text($text);
-                    if (!isset($seen_texts[$normalized])) {
-                        $blocks[] = array('tag' => $tag_name, 'text' => $text);
-                        $seen_texts[$normalized] = true;
-                    }
-                }
-            } elseif ($tag_name === 'p') {
-                $text = $this->get_node_text($node);
-                if (!empty($text) && strlen($text) >= 20) {
-                    $normalized = $this->normalize_text($text);
-                    if (!isset($seen_texts[$normalized])) {
-                        $blocks[] = array('tag' => 'p', 'text' => $text);
-                        $seen_texts[$normalized] = true;
-                    }
-                }
-            } elseif (in_array($tag_name, array('div', 'section')) && count($blocks) < 100) {
-                $text = $this->get_node_text($node);
-                if (!empty($text) && strlen($text) >= 30 && !$this->is_node_container_only($node)) {
-                    $normalized = $this->normalize_text($text);
-                    if (!isset($seen_texts[$normalized])) {
-                        $blocks[] = array('tag' => 'div', 'text' => $text);
-                        $seen_texts[$normalized] = true;
-                    }
-                }
-            }
+        foreach ($nodes as $node) {
             if (count($blocks) >= 100) break;
+            
+            $tag_name = strtolower($node->nodeName);
+            $text = $this->get_node_text($node);
+            
+            // Skip empty or very short content
+            $min_length = ($tag_name === 'p') ? 20 : 10;
+            if (empty($text) || strlen($text) < $min_length) continue;
+            
+            // Skip duplicate content
+            $normalized = $this->normalize_text($text);
+            if (isset($seen_texts[$normalized])) continue;
+            
+            $blocks[] = array('tag' => $tag_name, 'text' => $text);
+            $seen_texts[$normalized] = true;
         }
+        
         return $blocks;
     }
     
