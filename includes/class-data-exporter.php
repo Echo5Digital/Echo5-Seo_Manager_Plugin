@@ -374,10 +374,44 @@ class Echo5_SEO_Data_Exporter {
             'schema' => array(),
         );
         
-        // Yoast SEO
+        // Yoast SEO - Use Yoast's helper to get the rendered title (with site name)
         if (defined('WPSEO_VERSION')) {
-            $seo_data['title'] = get_post_meta($post_id, '_yoast_wpseo_title', true);
-            $seo_data['description'] = get_post_meta($post_id, '_yoast_wpseo_metadesc', true);
+            // Get rendered title using Yoast's replace_vars function
+            $raw_title = get_post_meta($post_id, '_yoast_wpseo_title', true);
+            
+            // If empty or contains template vars, use Yoast's title generation
+            if (empty($raw_title) || strpos($raw_title, '%%') !== false) {
+                // Use Yoast's internal title generation if available
+                if (class_exists('WPSEO_Replace_Vars')) {
+                    $replace_vars = new WPSEO_Replace_Vars();
+                    $post = get_post($post_id);
+                    
+                    // Get default title template if custom is empty
+                    if (empty($raw_title)) {
+                        $post_type = get_post_type($post_id);
+                        $raw_title = WPSEO_Options::get('title-' . $post_type, '%%title%% %%sep%% %%sitename%%');
+                    }
+                    
+                    // Replace variables to get actual title
+                    $seo_data['title'] = $replace_vars->replace($raw_title, $post);
+                } else {
+                    // Fallback: Post title + separator + site name
+                    $seo_data['title'] = get_the_title($post_id) . ' - ' . get_bloginfo('name');
+                }
+            } else {
+                $seo_data['title'] = $raw_title;
+            }
+            
+            // Get description with Yoast's variable replacement
+            $raw_desc = get_post_meta($post_id, '_yoast_wpseo_metadesc', true);
+            if (!empty($raw_desc) && strpos($raw_desc, '%%') !== false && class_exists('WPSEO_Replace_Vars')) {
+                $replace_vars = new WPSEO_Replace_Vars();
+                $post = get_post($post_id);
+                $seo_data['description'] = $replace_vars->replace($raw_desc, $post);
+            } else {
+                $seo_data['description'] = $raw_desc;
+            }
+            
             $seo_data['focus_keyword'] = get_post_meta($post_id, '_yoast_wpseo_focuskw', true);
             $seo_data['canonical'] = get_post_meta($post_id, '_yoast_wpseo_canonical', true);
             $seo_data['og_title'] = get_post_meta($post_id, '_yoast_wpseo_opengraph-title', true);
@@ -388,20 +422,42 @@ class Echo5_SEO_Data_Exporter {
             $seo_data['twitter_image'] = get_post_meta($post_id, '_yoast_wpseo_twitter-image', true);
         }
         
-        // RankMath
+        // RankMath - Handle templates with variables
         if (defined('RANK_MATH_VERSION')) {
-            $seo_data['title'] = get_post_meta($post_id, 'rank_math_title', true);
+            $raw_title = get_post_meta($post_id, 'rank_math_title', true);
+            
+            // If empty or contains template vars
+            if (empty($raw_title) || strpos($raw_title, '%') !== false) {
+                // Fallback: Post title + site name
+                $seo_data['title'] = get_the_title($post_id) . ' - ' . get_bloginfo('name');
+            } else {
+                $seo_data['title'] = $raw_title;
+            }
+            
             $seo_data['description'] = get_post_meta($post_id, 'rank_math_description', true);
             $seo_data['focus_keyword'] = get_post_meta($post_id, 'rank_math_focus_keyword', true);
             $seo_data['canonical'] = get_post_meta($post_id, 'rank_math_canonical_url', true);
             $seo_data['robots'] = get_post_meta($post_id, 'rank_math_robots', true);
         }
         
-        // All in One SEO
+        // All in One SEO - Handle templates
         if (defined('AIOSEO_VERSION')) {
-            $seo_data['title'] = get_post_meta($post_id, '_aioseo_title', true);
+            $raw_title = get_post_meta($post_id, '_aioseo_title', true);
+            
+            if (empty($raw_title) || strpos($raw_title, '#') !== false) {
+                // AIOSEO uses # placeholders, fallback to post title + site name
+                $seo_data['title'] = get_the_title($post_id) . ' - ' . get_bloginfo('name');
+            } else {
+                $seo_data['title'] = $raw_title;
+            }
+            
             $seo_data['description'] = get_post_meta($post_id, '_aioseo_description', true);
             $seo_data['canonical'] = get_post_meta($post_id, '_aioseo_canonical_url', true);
+        }
+        
+        // Final fallback: If no SEO plugin set a title, use post title + site name
+        if (empty($seo_data['title'])) {
+            $seo_data['title'] = get_the_title($post_id) . ' - ' . get_bloginfo('name');
         }
         
         return $seo_data;
