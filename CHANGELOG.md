@@ -5,7 +5,47 @@ All notable changes to the Echo5 Seo Manager Plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2025-12-30
+
+### Added - Publisher System
+- **Echo5 Publisher**: Push landing pages directly from Echo5 AI to WordPress
+- HMAC signature authentication for secure API requests
+- Version snapshots with rollback support (last 10 versions)
+- Safe update mode preserves existing content sections
+- Full update mode replaces entire page content
+- Scheduled publishing with cron integration
+- Automatic "Echo5-Seo" author assignment for published pages
+
+### Added - Media Handler
+- Image upload with URL-based deduplication
+- Gallery creation and management
+- Featured image support
+- Alt text and caption preservation
+
+### Added - SEO Meta Handler
+- Multi-plugin support: Yoast SEO, Rank Math, All in One SEO, SEOPress, The SEO Framework
+- Focus keyword and secondary keywords
+- Meta title and description management
+- Automatic SEO plugin detection
+
+### Added - Publish Logger
+- Complete audit trail for all publish actions
+- Custom database table for logs
+- Webhook notifications on publish events
+- Log retention management
+
+### Security
+- HMAC-SHA256 signature verification
+- Nonce-based replay attack prevention
+- Timestamp validation (5-minute window)
+- Temporary unfiltered HTML for script/style injection
+- Automatic kses filter bypass for trusted content
+
+### Fixed
+- WordPress content sanitization stripping script tags
+- Author not being set on published pages
+
+## [1.1.3] - 2025-12-20
 
 ### Added
 - GitHub-powered automatic update system
