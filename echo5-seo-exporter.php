@@ -33,6 +33,9 @@ require_once ECHO5_SEO_PLUGIN_DIR . 'includes/class-media-handler.php';
 require_once ECHO5_SEO_PLUGIN_DIR . 'includes/class-seo-meta-handler.php';
 require_once ECHO5_SEO_PLUGIN_DIR . 'includes/class-publish-logger.php';
 
+// Include required files - Brand Extraction (v2.1)
+require_once ECHO5_SEO_PLUGIN_DIR . 'includes/class-brand-extractor.php';
+
 /**
  * Main Plugin Class
  */

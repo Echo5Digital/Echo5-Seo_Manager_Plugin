@@ -8,10 +8,12 @@ class Echo5_SEO_API_Handler {
     private $namespace = 'echo5-seo/v1';
     private $data_exporter;
     private $security;
+    private $brand_extractor;
     
     public function __construct($data_exporter, $security) {
         $this->data_exporter = $data_exporter;
         $this->security = $security;
+        $this->brand_extractor = new Echo5_Brand_Extractor();
     }
     
     /**
@@ -131,6 +133,19 @@ class Echo5_SEO_API_Handler {
             'methods' => 'POST',
             'callback' => array($this, 'regenerate_api_key'),
             'permission_callback' => array($this->security, 'verify_admin'),
+        ));
+        
+        // Extract brand tokens (colors, typography) from Elementor
+        register_rest_route($this->namespace, '/brand-tokens/extract', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'extract_brand_tokens'),
+            'permission_callback' => array($this->security, 'verify_api_key'),
+            'args' => array(
+                'page_limit' => array(
+                    'default' => 10,
+                    'sanitize_callback' => 'absint',
+                ),
+            ),
         ));
     }
     
@@ -292,5 +307,42 @@ class Echo5_SEO_API_Handler {
             'new_key' => $new_key,
             'timestamp' => current_time('mysql'),
         ));
+    }
+    
+    /**
+     * Extract brand tokens (colors, typography) from Elementor
+     * 
+     * Uses hybrid approach:
+     * 1. Get global colors/fonts from Elementor Kit settings
+     * 2. Supplement by scanning pages for most-used colors/fonts
+     */
+    public function extract_brand_tokens($request) {
+        $page_limit = $request->get_param('page_limit');
+        
+        // Check if Elementor is active
+        if (!did_action('elementor/loaded')) {
+            return new WP_Error(
+                'elementor_not_active',
+                'Elementor is not active on this site. Brand token extraction requires Elementor.',
+                array('status' => 400)
+            );
+        }
+        
+        try {
+            $tokens = $this->brand_extractor->extract_brand_tokens($page_limit);
+            
+            return rest_ensure_response(array(
+                'success' => true,
+                'data' => $tokens,
+                'message' => 'Brand tokens extracted successfully',
+                'timestamp' => current_time('mysql'),
+            ));
+        } catch (Exception $e) {
+            return new WP_Error(
+                'extraction_failed',
+                'Failed to extract brand tokens: ' . $e->getMessage(),
+                array('status' => 500)
+            );
+        }
     }
 }
