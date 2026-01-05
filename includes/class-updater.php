@@ -206,18 +206,52 @@ class Echo5_SEO_Updater {
     }
     
     /**
-     * After install/update, rename the GitHub folder
+     * After install/update, rename the GitHub folder to correct plugin name
+     * GitHub downloads come with folder names like "Echo5Digital-Echo5-Seo_Manager_Plugin-abc1234"
+     * We need to rename this to "echo5-seo-exporter" for WordPress to recognize it
      */
     public function after_install($response, $hook_extra, $result) {
         global $wp_filesystem;
         
-        $plugin_folder = WP_PLUGIN_DIR . '/' . $this->plugin_basename;
-        $wp_filesystem->move($result['destination'], $plugin_folder);
-        $result['destination'] = $plugin_folder;
+        // Make sure we're working with the right plugin
+        if (!isset($hook_extra['plugin']) || $hook_extra['plugin'] !== $this->plugin_slug) {
+            return $result;
+        }
         
-        // Reactivate plugin if it was active
-        if ($hook_extra['plugin'] === $this->plugin_slug) {
-            activate_plugin($this->plugin_slug);
+        // The correct plugin folder name
+        $proper_folder = WP_PLUGIN_DIR . '/echo5-seo-exporter';
+        
+        // The destination folder from GitHub (has weird name like Echo5Digital-Echo5-Seo_Manager_Plugin-abc1234)
+        $installed_folder = $result['destination'];
+        
+        // Log for debugging
+        error_log('Echo5 Updater: Installed folder: ' . $installed_folder);
+        error_log('Echo5 Updater: Proper folder: ' . $proper_folder);
+        
+        // If already correct, skip
+        if ($installed_folder === $proper_folder) {
+            error_log('Echo5 Updater: Folder already correct');
+            return $result;
+        }
+        
+        // Remove the old plugin folder first (if exists and is different)
+        if ($wp_filesystem->exists($proper_folder)) {
+            error_log('Echo5 Updater: Removing old folder');
+            $wp_filesystem->delete($proper_folder, true);
+        }
+        
+        // Move/rename the new folder to the correct name
+        $moved = $wp_filesystem->move($installed_folder, $proper_folder);
+        
+        if ($moved) {
+            error_log('Echo5 Updater: Folder moved successfully');
+            $result['destination'] = $proper_folder;
+            
+            // Reactivate the plugin
+            activate_plugin('echo5-seo-exporter/echo5-seo-exporter.php');
+            error_log('Echo5 Updater: Plugin reactivated');
+        } else {
+            error_log('Echo5 Updater: Failed to move folder');
         }
         
         return $result;
