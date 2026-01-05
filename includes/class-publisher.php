@@ -1218,6 +1218,16 @@ tailwind.config = {
         $widgets = array();
         $tagName = strtolower($node->tagName);
         
+        // FIRST: Check for data-elementor attribute for specialized widgets
+        $elementor_type = $node->getAttribute('data-elementor');
+        if (!empty($elementor_type)) {
+            $widget = $this->create_elementor_widget_from_data($dom, $node, $elementor_type);
+            if ($widget) {
+                $widgets[] = $widget;
+                return $widgets;
+            }
+        }
+        
         switch ($tagName) {
             case 'h1':
             case 'h2':
@@ -1256,12 +1266,22 @@ tailwind.config = {
             case 'a':
                 // Check if it's a button-like link
                 $class = $node->getAttribute('class');
-                if (strpos($class, 'btn') !== false || strpos($class, 'button') !== false) {
+                $elementor_attr = $node->getAttribute('data-elementor');
+                if ($elementor_attr === 'button' || strpos($class, 'btn') !== false || strpos($class, 'button') !== false) {
                     $widgets[] = $this->create_button_widget($node);
                 } else {
                     // Inline link, add as text
                     $widgets[] = $this->create_text_widget($dom->saveHTML($node));
                 }
+                break;
+                
+            case 'section':
+            case 'article':
+            case 'aside':
+            case 'main':
+                // These become their own sections with children parsed
+                $child_widgets = $this->parse_node_children($dom, $node);
+                $widgets = array_merge($widgets, $child_widgets);
                 break;
                 
             case 'div':
@@ -1479,6 +1499,368 @@ tailwind.config = {
             $inner .= $dom->saveHTML($child);
         }
         return $inner;
+    }
+    
+    /**
+     * Create Elementor widget based on data-elementor attribute
+     * Supports: icon-box, icon-list, counter, testimonial, call-to-action, accordion, star-rating, button
+     */
+    private function create_elementor_widget_from_data($dom, $node, $type) {
+        switch ($type) {
+            case 'icon-box':
+                return $this->create_icon_box_widget($dom, $node);
+                
+            case 'icon-list':
+                return $this->create_icon_list_widget($dom, $node);
+                
+            case 'counter':
+                return $this->create_counter_widget($node);
+                
+            case 'testimonial':
+                return $this->create_testimonial_widget($node);
+                
+            case 'call-to-action':
+                return $this->create_cta_widget($dom, $node);
+                
+            case 'accordion':
+                return $this->create_accordion_widget($dom, $node);
+                
+            case 'star-rating':
+                return $this->create_star_rating_widget($node);
+                
+            case 'button':
+                return $this->create_button_widget($node);
+                
+            case 'container':
+            case 'section':
+                // These are structural, parse children
+                return null;
+                
+            default:
+                return null;
+        }
+    }
+    
+    /**
+     * Create Elementor Icon Box widget
+     */
+    private function create_icon_box_widget($dom, $node) {
+        $icon = $node->getAttribute('data-icon') ?: 'fa fa-star';
+        
+        // Map common icon names to Font Awesome
+        $icon_map = array(
+            'wrench' => 'fa fa-wrench',
+            'check' => 'fa fa-check',
+            'star' => 'fa fa-star',
+            'phone' => 'fa fa-phone',
+            'clock' => 'fa fa-clock',
+            'shield' => 'fa fa-shield',
+            'home' => 'fa fa-home',
+            'users' => 'fa fa-users',
+            'cog' => 'fa fa-cog',
+            'bolt' => 'fa fa-bolt',
+            'heart' => 'fa fa-heart',
+            'thumbs-up' => 'fa fa-thumbs-up',
+            'award' => 'fa fa-award',
+            'certificate' => 'fa fa-certificate',
+        );
+        
+        if (isset($icon_map[$icon])) {
+            $icon = $icon_map[$icon];
+        }
+        
+        // Extract title (first h3 or h4) and description
+        $title = '';
+        $description = '';
+        
+        foreach ($node->childNodes as $child) {
+            if ($child->nodeType === XML_ELEMENT_NODE) {
+                $childTag = strtolower($child->tagName);
+                if (in_array($childTag, array('h3', 'h4', 'h5')) && empty($title)) {
+                    $title = trim($child->textContent);
+                } elseif (in_array($childTag, array('p', 'div', 'span'))) {
+                    $description .= trim($child->textContent) . ' ';
+                }
+            }
+        }
+        
+        if (empty($title)) {
+            $title = trim($node->textContent);
+        }
+        
+        return array(
+            'id' => $this->generate_elementor_id(),
+            'elType' => 'widget',
+            'widgetType' => 'icon-box',
+            'settings' => array(
+                'selected_icon' => array(
+                    'value' => $icon,
+                    'library' => 'fa-solid',
+                ),
+                'title_text' => $title,
+                'description_text' => trim($description),
+                'position' => 'top',
+                'title_size' => 'h3',
+            ),
+            'elements' => array(),
+        );
+    }
+    
+    /**
+     * Create Elementor Icon List widget
+     */
+    private function create_icon_list_widget($dom, $node) {
+        $items = array();
+        $default_icon = $node->getAttribute('data-icon') ?: 'check';
+        
+        // Map icon names
+        $icon_map = array(
+            'check' => 'fa fa-check',
+            'check-circle' => 'fa fa-check-circle',
+            'star' => 'fa fa-star',
+            'arrow-right' => 'fa fa-arrow-right',
+            'chevron-right' => 'fa fa-chevron-right',
+        );
+        
+        $fa_icon = isset($icon_map[$default_icon]) ? $icon_map[$default_icon] : 'fa fa-check';
+        
+        // Find list items (divs with data-icon or li elements)
+        foreach ($node->childNodes as $child) {
+            if ($child->nodeType === XML_ELEMENT_NODE) {
+                $text = trim($child->textContent);
+                if (!empty($text)) {
+                    $child_icon = $child->getAttribute('data-icon');
+                    $icon_to_use = !empty($child_icon) && isset($icon_map[$child_icon]) 
+                        ? $icon_map[$child_icon] 
+                        : $fa_icon;
+                    
+                    $items[] = array(
+                        'text' => $text,
+                        'selected_icon' => array(
+                            'value' => $icon_to_use,
+                            'library' => 'fa-solid',
+                        ),
+                    );
+                }
+            }
+        }
+        
+        return array(
+            'id' => $this->generate_elementor_id(),
+            'elType' => 'widget',
+            'widgetType' => 'icon-list',
+            'settings' => array(
+                'icon_list' => $items,
+                'view' => 'traditional',
+            ),
+            'elements' => array(),
+        );
+    }
+    
+    /**
+     * Create Elementor Counter widget
+     */
+    private function create_counter_widget($node) {
+        $number = $node->getAttribute('data-number') ?: '0';
+        $suffix = $node->getAttribute('data-suffix') ?: '';
+        $prefix = $node->getAttribute('data-prefix') ?: '';
+        $title = trim($node->textContent);
+        
+        return array(
+            'id' => $this->generate_elementor_id(),
+            'elType' => 'widget',
+            'widgetType' => 'counter',
+            'settings' => array(
+                'starting_number' => 0,
+                'ending_number' => intval($number),
+                'prefix' => $prefix,
+                'suffix' => $suffix,
+                'title' => $title,
+                'duration' => 2000,
+            ),
+            'elements' => array(),
+        );
+    }
+    
+    /**
+     * Create Elementor Testimonial widget
+     */
+    private function create_testimonial_widget($node) {
+        $name = $node->getAttribute('data-name') ?: 'Customer';
+        $company = $node->getAttribute('data-company') ?: '';
+        $rating = $node->getAttribute('data-rating') ?: '';
+        $image = $node->getAttribute('data-image') ?: '';
+        $content = trim($node->textContent);
+        
+        $settings = array(
+            'testimonial_content' => $content,
+            'testimonial_name' => $name,
+            'testimonial_job' => $company,
+            'testimonial_alignment' => 'center',
+        );
+        
+        if (!empty($image)) {
+            $settings['testimonial_image'] = array(
+                'url' => $image,
+            );
+        }
+        
+        return array(
+            'id' => $this->generate_elementor_id(),
+            'elType' => 'widget',
+            'widgetType' => 'testimonial',
+            'settings' => $settings,
+            'elements' => array(),
+        );
+    }
+    
+    /**
+     * Create Elementor Call to Action widget
+     */
+    private function create_cta_widget($dom, $node) {
+        // Extract title, description, and button from children
+        $title = '';
+        $description = '';
+        $button_text = 'Learn More';
+        $button_url = '#';
+        
+        foreach ($node->childNodes as $child) {
+            if ($child->nodeType === XML_ELEMENT_NODE) {
+                $childTag = strtolower($child->tagName);
+                if (in_array($childTag, array('h2', 'h3', 'h4')) && empty($title)) {
+                    $title = trim($child->textContent);
+                } elseif ($childTag === 'p') {
+                    $description .= trim($child->textContent) . ' ';
+                } elseif ($childTag === 'a') {
+                    $button_text = trim($child->textContent);
+                    $button_url = $child->getAttribute('href') ?: '#';
+                }
+            }
+        }
+        
+        return array(
+            'id' => $this->generate_elementor_id(),
+            'elType' => 'widget',
+            'widgetType' => 'call-to-action',
+            'settings' => array(
+                'title' => $title,
+                'description' => trim($description),
+                'button' => $button_text,
+                'link' => array(
+                    'url' => $button_url,
+                ),
+                'skin' => 'classic',
+            ),
+            'elements' => array(),
+        );
+    }
+    
+    /**
+     * Create Elementor Accordion widget (for FAQs)
+     */
+    private function create_accordion_widget($dom, $node) {
+        $items = array();
+        
+        // Look for question/answer pairs
+        // Expected structure: divs or details elements with question in h* or summary, answer in p/div
+        $current_question = '';
+        $current_answer = '';
+        
+        foreach ($node->childNodes as $child) {
+            if ($child->nodeType !== XML_ELEMENT_NODE) {
+                continue;
+            }
+            
+            $childTag = strtolower($child->tagName);
+            
+            if ($childTag === 'details') {
+                // HTML5 details/summary pattern
+                $question = '';
+                $answer = '';
+                foreach ($child->childNodes as $detailChild) {
+                    if ($detailChild->nodeType === XML_ELEMENT_NODE) {
+                        if (strtolower($detailChild->tagName) === 'summary') {
+                            $question = trim($detailChild->textContent);
+                        } else {
+                            $answer .= trim($detailChild->textContent) . ' ';
+                        }
+                    }
+                }
+                if (!empty($question)) {
+                    $items[] = array(
+                        'tab_title' => $question,
+                        'tab_content' => trim($answer),
+                    );
+                }
+            } elseif ($childTag === 'div') {
+                // Div-based FAQ pattern
+                $question = '';
+                $answer = '';
+                foreach ($child->childNodes as $faqChild) {
+                    if ($faqChild->nodeType === XML_ELEMENT_NODE) {
+                        $faqChildTag = strtolower($faqChild->tagName);
+                        if (in_array($faqChildTag, array('h3', 'h4', 'h5', 'strong', 'b'))) {
+                            $question = trim($faqChild->textContent);
+                        } elseif (in_array($faqChildTag, array('p', 'div', 'span'))) {
+                            $answer .= trim($faqChild->textContent) . ' ';
+                        }
+                    }
+                }
+                if (!empty($question)) {
+                    $items[] = array(
+                        'tab_title' => $question,
+                        'tab_content' => trim($answer),
+                    );
+                }
+            }
+        }
+        
+        // If no structured items found, try to create from text content
+        if (empty($items)) {
+            $items[] = array(
+                'tab_title' => 'Frequently Asked Questions',
+                'tab_content' => trim($node->textContent),
+            );
+        }
+        
+        return array(
+            'id' => $this->generate_elementor_id(),
+            'elType' => 'widget',
+            'widgetType' => 'accordion',
+            'settings' => array(
+                'tabs' => $items,
+                'selected_icon' => array(
+                    'value' => 'fa fa-plus',
+                    'library' => 'fa-solid',
+                ),
+                'selected_active_icon' => array(
+                    'value' => 'fa fa-minus',
+                    'library' => 'fa-solid',
+                ),
+            ),
+            'elements' => array(),
+        );
+    }
+    
+    /**
+     * Create Elementor Star Rating widget
+     */
+    private function create_star_rating_widget($node) {
+        $rating = floatval($node->getAttribute('data-rating') ?: '5');
+        $scale = intval($node->getAttribute('data-scale') ?: '5');
+        
+        return array(
+            'id' => $this->generate_elementor_id(),
+            'elType' => 'widget',
+            'widgetType' => 'star-rating',
+            'settings' => array(
+                'rating_scale' => $scale,
+                'rating' => $rating,
+                'star_style' => 'star_fontawesome',
+                'unmarked_star_style' => 'outline',
+            ),
+            'elements' => array(),
+        );
     }
 }
 
