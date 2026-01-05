@@ -993,52 +993,94 @@ tailwind.config = {
     
     /**
      * Convert HTML content to Elementor JSON format
-     * Creates a single-section layout with the HTML content
+     * Creates proper sections, containers, and widgets from HTML structure
      * 
      * @param string $html The HTML content to convert
      * @return string JSON encoded Elementor data
      */
     private function convert_html_to_elementor($html) {
-        // Generate unique IDs for Elementor elements
+        // Use DOMDocument to parse HTML
+        $dom = new DOMDocument();
+        libxml_use_internal_errors(true);
+        
+        // Add wrapper to handle fragments
+        $wrapped_html = '<div id="echo5-wrapper">' . $html . '</div>';
+        $dom->loadHTML('<?xml encoding="utf-8" ?>' . $wrapped_html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+        
+        $wrapper = $dom->getElementById('echo5-wrapper');
+        if (!$wrapper) {
+            // Fallback: create single section with HTML widget
+            return $this->create_fallback_elementor_data($html);
+        }
+        
+        // Parse top-level elements into sections
+        $sections = array();
+        $current_widgets = array();
+        
+        foreach ($wrapper->childNodes as $node) {
+            if ($node->nodeType === XML_TEXT_NODE) {
+                $text = trim($node->textContent);
+                if (!empty($text)) {
+                    $current_widgets[] = $this->create_text_widget($text);
+                }
+                continue;
+            }
+            
+            if ($node->nodeType !== XML_ELEMENT_NODE) {
+                continue;
+            }
+            
+            $tagName = strtolower($node->tagName);
+            
+            // Check if this is a section-level element (should become its own Elementor section)
+            if (in_array($tagName, array('section', 'header', 'footer', 'article', 'main'))) {
+                // Flush current widgets as a section first
+                if (!empty($current_widgets)) {
+                    $sections[] = $this->create_elementor_section($current_widgets);
+                    $current_widgets = array();
+                }
+                
+                // Parse this section's children into widgets
+                $section_widgets = $this->parse_node_children($dom, $node);
+                if (!empty($section_widgets)) {
+                    $sections[] = $this->create_elementor_section($section_widgets, $node);
+                }
+            } else {
+                // Parse this node into widgets
+                $widgets = $this->parse_node_to_widgets($dom, $node);
+                $current_widgets = array_merge($current_widgets, $widgets);
+            }
+        }
+        
+        // Flush remaining widgets
+        if (!empty($current_widgets)) {
+            $sections[] = $this->create_elementor_section($current_widgets);
+        }
+        
+        // If no sections created, fallback
+        if (empty($sections)) {
+            return $this->create_fallback_elementor_data($html);
+        }
+        
+        return json_encode($sections);
+    }
+    
+    /**
+     * Create fallback Elementor data with single HTML widget
+     */
+    private function create_fallback_elementor_data($html) {
         $section_id = $this->generate_elementor_id();
         $column_id = $this->generate_elementor_id();
         $widget_id = $this->generate_elementor_id();
         
-        // Parse the HTML and try to create structured Elementor elements
-        $elements = $this->parse_html_to_elementor_elements($html);
-        
-        if (empty($elements)) {
-            // Fallback: wrap entire HTML in a single text widget
-            $elements = array(
-                array(
-                    'id' => $widget_id,
-                    'elType' => 'widget',
-                    'widgetType' => 'text-editor',
-                    'settings' => array(
-                        'editor' => $html,
-                    ),
-                    'elements' => array(),
-                ),
-            );
-        }
-        
-        // Build the Elementor structure
         $elementor_data = array(
             array(
                 'id' => $section_id,
                 'elType' => 'section',
                 'settings' => array(
-                    'structure' => '10', // Single column
-                    'content_width' => 'full',
-                    'gap' => 'default',
-                    'padding' => array(
-                        'unit' => 'px',
-                        'top' => '40',
-                        'right' => '20',
-                        'bottom' => '40',
-                        'left' => '20',
-                        'isLinked' => false,
-                    ),
+                    'structure' => '10',
+                    'content_width' => 'boxed',
                 ),
                 'elements' => array(
                     array(
@@ -1046,9 +1088,18 @@ tailwind.config = {
                         'elType' => 'column',
                         'settings' => array(
                             '_column_size' => 100,
-                            '_inline_size' => null,
                         ),
-                        'elements' => $elements,
+                        'elements' => array(
+                            array(
+                                'id' => $widget_id,
+                                'elType' => 'widget',
+                                'widgetType' => 'text-editor',
+                                'settings' => array(
+                                    'editor' => $html,
+                                ),
+                                'elements' => array(),
+                            ),
+                        ),
                     ),
                 ),
             ),
@@ -1058,34 +1109,78 @@ tailwind.config = {
     }
     
     /**
-     * Parse HTML content and convert to Elementor elements
-     * Attempts to break down HTML into proper widgets (headings, text, images, etc.)
-     * 
-     * @param string $html The HTML content
-     * @return array Array of Elementor element definitions
+     * Create an Elementor section with widgets
      */
-    private function parse_html_to_elementor_elements($html) {
-        $elements = array();
+    private function create_elementor_section($widgets, $source_node = null) {
+        $section_id = $this->generate_elementor_id();
+        $column_id = $this->generate_elementor_id();
         
-        // Use DOMDocument to parse HTML
-        $dom = new DOMDocument();
-        libxml_use_internal_errors(true);
+        $settings = array(
+            'structure' => '10',
+            'content_width' => 'boxed',
+            'gap' => 'default',
+        );
         
-        // Add wrapper to handle fragments
-        $html = '<div id="echo5-wrapper">' . $html . '</div>';
-        $dom->loadHTML('<?xml encoding="utf-8" ?>' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-        libxml_clear_errors();
-        
-        $wrapper = $dom->getElementById('echo5-wrapper');
-        if (!$wrapper) {
-            return array();
+        // Extract background color or class from source node if available
+        if ($source_node && $source_node instanceof DOMElement) {
+            $class = $source_node->getAttribute('class');
+            $style = $source_node->getAttribute('style');
+            
+            // Check for common background patterns
+            if (preg_match('/bg-(?:gray|slate|zinc|neutral|stone)-(\d+)/i', $class, $matches)) {
+                // Tailwind gray backgrounds
+                $shade = intval($matches[1]);
+                if ($shade >= 800) {
+                    $settings['background_background'] = 'classic';
+                    $settings['background_color'] = '#1f2937';
+                } elseif ($shade >= 600) {
+                    $settings['background_background'] = 'classic';
+                    $settings['background_color'] = '#4b5563';
+                } elseif ($shade >= 100) {
+                    $settings['background_background'] = 'classic';
+                    $settings['background_color'] = '#f3f4f6';
+                }
+            }
+            
+            // Check for padding classes
+            if (preg_match('/py-(\d+)/i', $class, $matches)) {
+                $padding = intval($matches[1]) * 4; // Tailwind uses 4px units
+                $settings['padding'] = array(
+                    'unit' => 'px',
+                    'top' => strval($padding),
+                    'bottom' => strval($padding),
+                    'left' => '0',
+                    'right' => '0',
+                    'isLinked' => false,
+                );
+            }
         }
         
-        // Buffer for accumulating text content
+        return array(
+            'id' => $section_id,
+            'elType' => 'section',
+            'settings' => $settings,
+            'elements' => array(
+                array(
+                    'id' => $column_id,
+                    'elType' => 'column',
+                    'settings' => array(
+                        '_column_size' => 100,
+                    ),
+                    'elements' => $widgets,
+                ),
+            ),
+        );
+    }
+    
+    /**
+     * Parse a node's children into widgets
+     */
+    private function parse_node_children($dom, $parent_node) {
+        $widgets = array();
         $text_buffer = '';
         
-        foreach ($wrapper->childNodes as $node) {
-            // Skip text-only nodes with just whitespace
+        foreach ($parent_node->childNodes as $node) {
             if ($node->nodeType === XML_TEXT_NODE) {
                 $text = trim($node->textContent);
                 if (!empty($text)) {
@@ -1098,87 +1193,149 @@ tailwind.config = {
                 continue;
             }
             
-            $tagName = strtolower($node->tagName);
-            
-            // Handle different tag types
-            switch ($tagName) {
-                case 'h1':
-                case 'h2':
-                case 'h3':
-                case 'h4':
-                case 'h5':
-                case 'h6':
-                    // Flush text buffer first
-                    if (!empty($text_buffer)) {
-                        $elements[] = $this->create_text_widget($text_buffer);
-                        $text_buffer = '';
-                    }
-                    $elements[] = $this->create_heading_widget($node->textContent, $tagName);
-                    break;
-                    
-                case 'img':
-                    // Flush text buffer first
-                    if (!empty($text_buffer)) {
-                        $elements[] = $this->create_text_widget($text_buffer);
-                        $text_buffer = '';
-                    }
-                    $src = $node->getAttribute('src');
-                    $alt = $node->getAttribute('alt');
-                    if (!empty($src)) {
-                        $elements[] = $this->create_image_widget($src, $alt);
-                    }
-                    break;
-                    
-                case 'section':
-                case 'div':
-                    // For divs/sections, we need to parse recursively or treat as HTML block
-                    // For now, add as HTML content
-                    $inner_html = $this->get_inner_html($dom, $node);
-                    if (!empty(trim($inner_html))) {
-                        // Flush text buffer first
-                        if (!empty($text_buffer)) {
-                            $elements[] = $this->create_text_widget($text_buffer);
-                            $text_buffer = '';
-                        }
-                        $elements[] = $this->create_html_widget($dom->saveHTML($node));
-                    }
-                    break;
-                    
-                case 'ul':
-                case 'ol':
-                    // Lists - treat as text editor content
-                    if (!empty($text_buffer)) {
-                        $elements[] = $this->create_text_widget($text_buffer);
-                        $text_buffer = '';
-                    }
-                    $elements[] = $this->create_text_widget($dom->saveHTML($node));
-                    break;
-                    
-                case 'p':
-                case 'span':
-                case 'a':
-                case 'strong':
-                case 'em':
-                case 'blockquote':
-                default:
-                    // Accumulate in text buffer
-                    $text_buffer .= $dom->saveHTML($node);
-                    break;
+            // Flush text buffer before processing element
+            if (!empty(trim($text_buffer))) {
+                $widgets[] = $this->create_text_widget($text_buffer);
+                $text_buffer = '';
             }
+            
+            $node_widgets = $this->parse_node_to_widgets($dom, $node);
+            $widgets = array_merge($widgets, $node_widgets);
         }
         
         // Flush remaining text buffer
         if (!empty(trim($text_buffer))) {
-            $elements[] = $this->create_text_widget($text_buffer);
+            $widgets[] = $this->create_text_widget($text_buffer);
         }
         
-        return $elements;
+        return $widgets;
+    }
+    
+    /**
+     * Parse a single DOM node into Elementor widgets
+     */
+    private function parse_node_to_widgets($dom, $node) {
+        $widgets = array();
+        $tagName = strtolower($node->tagName);
+        
+        switch ($tagName) {
+            case 'h1':
+            case 'h2':
+            case 'h3':
+            case 'h4':
+            case 'h5':
+            case 'h6':
+                $widgets[] = $this->create_heading_widget(trim($node->textContent), $tagName, $node);
+                break;
+                
+            case 'p':
+                $inner = $this->get_inner_html($dom, $node);
+                if (!empty(trim($inner))) {
+                    $widgets[] = $this->create_text_widget('<p>' . $inner . '</p>');
+                }
+                break;
+                
+            case 'img':
+                $src = $node->getAttribute('src');
+                $alt = $node->getAttribute('alt');
+                if (!empty($src)) {
+                    $widgets[] = $this->create_image_widget($src, $alt);
+                }
+                break;
+                
+            case 'ul':
+            case 'ol':
+                $widgets[] = $this->create_text_widget($dom->saveHTML($node));
+                break;
+                
+            case 'blockquote':
+                $inner = $this->get_inner_html($dom, $node);
+                $widgets[] = $this->create_text_widget('<blockquote>' . $inner . '</blockquote>');
+                break;
+                
+            case 'a':
+                // Check if it's a button-like link
+                $class = $node->getAttribute('class');
+                if (strpos($class, 'btn') !== false || strpos($class, 'button') !== false) {
+                    $widgets[] = $this->create_button_widget($node);
+                } else {
+                    // Inline link, add as text
+                    $widgets[] = $this->create_text_widget($dom->saveHTML($node));
+                }
+                break;
+                
+            case 'div':
+                // Check if it's a container with specific structure
+                $class = $node->getAttribute('class');
+                
+                // If it has grid/flex classes, try to parse children
+                if (preg_match('/grid|flex|container|max-w-/i', $class)) {
+                    $child_widgets = $this->parse_node_children($dom, $node);
+                    $widgets = array_merge($widgets, $child_widgets);
+                } else {
+                    // Parse children directly
+                    $child_widgets = $this->parse_node_children($dom, $node);
+                    if (!empty($child_widgets)) {
+                        $widgets = array_merge($widgets, $child_widgets);
+                    } else {
+                        // Empty div with just text content
+                        $text = trim($node->textContent);
+                        if (!empty($text)) {
+                            $widgets[] = $this->create_text_widget($dom->saveHTML($node));
+                        }
+                    }
+                }
+                break;
+                
+            case 'span':
+            case 'strong':
+            case 'em':
+            case 'b':
+            case 'i':
+                // Inline elements - wrap in paragraph
+                $widgets[] = $this->create_text_widget('<p>' . $dom->saveHTML($node) . '</p>');
+                break;
+                
+            case 'hr':
+                $widgets[] = $this->create_divider_widget();
+                break;
+                
+            case 'table':
+                // Tables go as HTML widget
+                $widgets[] = $this->create_html_widget($dom->saveHTML($node));
+                break;
+                
+            case 'form':
+            case 'iframe':
+            case 'video':
+            case 'audio':
+            case 'canvas':
+            case 'svg':
+                // Special elements go as HTML widget
+                $widgets[] = $this->create_html_widget($dom->saveHTML($node));
+                break;
+                
+            default:
+                // Try to parse children, or add as HTML widget
+                $child_widgets = $this->parse_node_children($dom, $node);
+                if (!empty($child_widgets)) {
+                    $widgets = array_merge($widgets, $child_widgets);
+                } else {
+                    $html = $dom->saveHTML($node);
+                    if (!empty(trim($html))) {
+                        $widgets[] = $this->create_text_widget($html);
+                    }
+                }
+                break;
+        }
+        
+        return $widgets;
     }
     
     /**
      * Create Elementor heading widget
      */
-    private function create_heading_widget($text, $tag = 'h2') {
+    private function create_heading_widget($text, $tag = 'h2', $source_node = null) {
         $size_map = array(
             'h1' => 'xl',
             'h2' => 'large',
@@ -1188,15 +1345,27 @@ tailwind.config = {
             'h6' => 'small',
         );
         
+        $settings = array(
+            'title' => $text,
+            'header_size' => $tag,
+            'size' => isset($size_map[$tag]) ? $size_map[$tag] : 'default',
+        );
+        
+        // Check for alignment classes
+        if ($source_node && $source_node instanceof DOMElement) {
+            $class = $source_node->getAttribute('class');
+            if (strpos($class, 'text-center') !== false) {
+                $settings['align'] = 'center';
+            } elseif (strpos($class, 'text-right') !== false) {
+                $settings['align'] = 'right';
+            }
+        }
+        
         return array(
             'id' => $this->generate_elementor_id(),
             'elType' => 'widget',
             'widgetType' => 'heading',
-            'settings' => array(
-                'title' => $text,
-                'header_size' => $tag,
-                'size' => isset($size_map[$tag]) ? $size_map[$tag] : 'default',
-            ),
+            'settings' => $settings,
             'elements' => array(),
         );
     }
@@ -1231,6 +1400,49 @@ tailwind.config = {
                 ),
                 'image_size' => 'full',
                 'align' => 'center',
+            ),
+            'elements' => array(),
+        );
+    }
+    
+    /**
+     * Create Elementor button widget
+     */
+    private function create_button_widget($node) {
+        $text = trim($node->textContent);
+        $url = $node->getAttribute('href');
+        
+        return array(
+            'id' => $this->generate_elementor_id(),
+            'elType' => 'widget',
+            'widgetType' => 'button',
+            'settings' => array(
+                'text' => $text,
+                'link' => array(
+                    'url' => $url,
+                    'is_external' => strpos($url, 'http') === 0,
+                    'nofollow' => false,
+                ),
+                'align' => 'center',
+            ),
+            'elements' => array(),
+        );
+    }
+    
+    /**
+     * Create Elementor divider widget
+     */
+    private function create_divider_widget() {
+        return array(
+            'id' => $this->generate_elementor_id(),
+            'elType' => 'widget',
+            'widgetType' => 'divider',
+            'settings' => array(
+                'style' => 'solid',
+                'weight' => array(
+                    'unit' => 'px',
+                    'size' => 1,
+                ),
             ),
             'elements' => array(),
         );
