@@ -378,6 +378,25 @@ class Echo5_Publisher {
             update_post_meta($page_id, '_echo5_last_sync', current_time('mysql'));
             update_post_meta($page_id, '_echo5_update_mode', $page_data['update_mode']);
             
+            // Step 8.5: Handle page template and layout options
+            if (!empty($page_data['template'])) {
+                update_post_meta($page_id, '_wp_page_template', $page_data['template']);
+            }
+            
+            // Hide page title if requested (for landing pages)
+            if (!empty($page_data['hide_title'])) {
+                // Elementor way - set page settings
+                $page_settings = get_post_meta($page_id, '_elementor_page_settings', true);
+                if (!is_array($page_settings)) {
+                    $page_settings = array();
+                }
+                $page_settings['hide_title'] = 'yes';
+                update_post_meta($page_id, '_elementor_page_settings', $page_settings);
+                
+                // Also set common theme meta for hiding title
+                update_post_meta($page_id, '_echo5_hide_title', true);
+            }
+            
             // Step 9: Convert to Elementor format if Elementor is active
             $use_elementor = isset($page_data['use_elementor']) ? $page_data['use_elementor'] : true;
             if ($use_elementor && $this->is_elementor_active()) {
