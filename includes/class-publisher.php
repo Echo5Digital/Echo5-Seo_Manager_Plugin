@@ -378,6 +378,23 @@ class Echo5_Publisher {
             update_post_meta($page_id, '_echo5_last_sync', current_time('mysql'));
             update_post_meta($page_id, '_echo5_update_mode', $page_data['update_mode']);
             
+            // Step 9: Convert to Elementor format if Elementor is active
+            $use_elementor = isset($page_data['use_elementor']) ? $page_data['use_elementor'] : true;
+            if ($use_elementor && $this->is_elementor_active()) {
+                $elementor_data = $this->convert_html_to_elementor($final_content);
+                if (!empty($elementor_data)) {
+                    update_post_meta($page_id, '_elementor_data', wp_slash($elementor_data));
+                    update_post_meta($page_id, '_elementor_edit_mode', 'builder');
+                    update_post_meta($page_id, '_elementor_template_type', 'wp-page');
+                    update_post_meta($page_id, '_elementor_version', defined('ELEMENTOR_VERSION') ? ELEMENTOR_VERSION : '3.0.0');
+                    
+                    // Clear Elementor cache for this page
+                    if (class_exists('\Elementor\Plugin')) {
+                        \Elementor\Plugin::$instance->files_manager->clear_cache();
+                    }
+                }
+            }
+            
             // Build response
             $response_time = round((microtime(true) - $start_time) * 1000);
             
@@ -965,6 +982,291 @@ tailwind.config = {
         
         // Last resort: current user or user ID 1
         return get_current_user_id() ?: 1;
+    }
+    
+    /**
+     * Check if Elementor is active
+     */
+    private function is_elementor_active() {
+        return defined('ELEMENTOR_VERSION') || class_exists('\Elementor\Plugin');
+    }
+    
+    /**
+     * Convert HTML content to Elementor JSON format
+     * Creates a single-section layout with the HTML content
+     * 
+     * @param string $html The HTML content to convert
+     * @return string JSON encoded Elementor data
+     */
+    private function convert_html_to_elementor($html) {
+        // Generate unique IDs for Elementor elements
+        $section_id = $this->generate_elementor_id();
+        $column_id = $this->generate_elementor_id();
+        $widget_id = $this->generate_elementor_id();
+        
+        // Parse the HTML and try to create structured Elementor elements
+        $elements = $this->parse_html_to_elementor_elements($html);
+        
+        if (empty($elements)) {
+            // Fallback: wrap entire HTML in a single text widget
+            $elements = array(
+                array(
+                    'id' => $widget_id,
+                    'elType' => 'widget',
+                    'widgetType' => 'text-editor',
+                    'settings' => array(
+                        'editor' => $html,
+                    ),
+                    'elements' => array(),
+                ),
+            );
+        }
+        
+        // Build the Elementor structure
+        $elementor_data = array(
+            array(
+                'id' => $section_id,
+                'elType' => 'section',
+                'settings' => array(
+                    'structure' => '10', // Single column
+                    'content_width' => 'full',
+                    'gap' => 'default',
+                    'padding' => array(
+                        'unit' => 'px',
+                        'top' => '40',
+                        'right' => '20',
+                        'bottom' => '40',
+                        'left' => '20',
+                        'isLinked' => false,
+                    ),
+                ),
+                'elements' => array(
+                    array(
+                        'id' => $column_id,
+                        'elType' => 'column',
+                        'settings' => array(
+                            '_column_size' => 100,
+                            '_inline_size' => null,
+                        ),
+                        'elements' => $elements,
+                    ),
+                ),
+            ),
+        );
+        
+        return json_encode($elementor_data);
+    }
+    
+    /**
+     * Parse HTML content and convert to Elementor elements
+     * Attempts to break down HTML into proper widgets (headings, text, images, etc.)
+     * 
+     * @param string $html The HTML content
+     * @return array Array of Elementor element definitions
+     */
+    private function parse_html_to_elementor_elements($html) {
+        $elements = array();
+        
+        // Use DOMDocument to parse HTML
+        $dom = new DOMDocument();
+        libxml_use_internal_errors(true);
+        
+        // Add wrapper to handle fragments
+        $html = '<div id="echo5-wrapper">' . $html . '</div>';
+        $dom->loadHTML('<?xml encoding="utf-8" ?>' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+        
+        $wrapper = $dom->getElementById('echo5-wrapper');
+        if (!$wrapper) {
+            return array();
+        }
+        
+        // Buffer for accumulating text content
+        $text_buffer = '';
+        
+        foreach ($wrapper->childNodes as $node) {
+            // Skip text-only nodes with just whitespace
+            if ($node->nodeType === XML_TEXT_NODE) {
+                $text = trim($node->textContent);
+                if (!empty($text)) {
+                    $text_buffer .= $dom->saveHTML($node);
+                }
+                continue;
+            }
+            
+            if ($node->nodeType !== XML_ELEMENT_NODE) {
+                continue;
+            }
+            
+            $tagName = strtolower($node->tagName);
+            
+            // Handle different tag types
+            switch ($tagName) {
+                case 'h1':
+                case 'h2':
+                case 'h3':
+                case 'h4':
+                case 'h5':
+                case 'h6':
+                    // Flush text buffer first
+                    if (!empty($text_buffer)) {
+                        $elements[] = $this->create_text_widget($text_buffer);
+                        $text_buffer = '';
+                    }
+                    $elements[] = $this->create_heading_widget($node->textContent, $tagName);
+                    break;
+                    
+                case 'img':
+                    // Flush text buffer first
+                    if (!empty($text_buffer)) {
+                        $elements[] = $this->create_text_widget($text_buffer);
+                        $text_buffer = '';
+                    }
+                    $src = $node->getAttribute('src');
+                    $alt = $node->getAttribute('alt');
+                    if (!empty($src)) {
+                        $elements[] = $this->create_image_widget($src, $alt);
+                    }
+                    break;
+                    
+                case 'section':
+                case 'div':
+                    // For divs/sections, we need to parse recursively or treat as HTML block
+                    // For now, add as HTML content
+                    $inner_html = $this->get_inner_html($dom, $node);
+                    if (!empty(trim($inner_html))) {
+                        // Flush text buffer first
+                        if (!empty($text_buffer)) {
+                            $elements[] = $this->create_text_widget($text_buffer);
+                            $text_buffer = '';
+                        }
+                        $elements[] = $this->create_html_widget($dom->saveHTML($node));
+                    }
+                    break;
+                    
+                case 'ul':
+                case 'ol':
+                    // Lists - treat as text editor content
+                    if (!empty($text_buffer)) {
+                        $elements[] = $this->create_text_widget($text_buffer);
+                        $text_buffer = '';
+                    }
+                    $elements[] = $this->create_text_widget($dom->saveHTML($node));
+                    break;
+                    
+                case 'p':
+                case 'span':
+                case 'a':
+                case 'strong':
+                case 'em':
+                case 'blockquote':
+                default:
+                    // Accumulate in text buffer
+                    $text_buffer .= $dom->saveHTML($node);
+                    break;
+            }
+        }
+        
+        // Flush remaining text buffer
+        if (!empty(trim($text_buffer))) {
+            $elements[] = $this->create_text_widget($text_buffer);
+        }
+        
+        return $elements;
+    }
+    
+    /**
+     * Create Elementor heading widget
+     */
+    private function create_heading_widget($text, $tag = 'h2') {
+        $size_map = array(
+            'h1' => 'xl',
+            'h2' => 'large',
+            'h3' => 'medium',
+            'h4' => 'small',
+            'h5' => 'small',
+            'h6' => 'small',
+        );
+        
+        return array(
+            'id' => $this->generate_elementor_id(),
+            'elType' => 'widget',
+            'widgetType' => 'heading',
+            'settings' => array(
+                'title' => $text,
+                'header_size' => $tag,
+                'size' => isset($size_map[$tag]) ? $size_map[$tag] : 'default',
+            ),
+            'elements' => array(),
+        );
+    }
+    
+    /**
+     * Create Elementor text editor widget
+     */
+    private function create_text_widget($html) {
+        return array(
+            'id' => $this->generate_elementor_id(),
+            'elType' => 'widget',
+            'widgetType' => 'text-editor',
+            'settings' => array(
+                'editor' => $html,
+            ),
+            'elements' => array(),
+        );
+    }
+    
+    /**
+     * Create Elementor image widget
+     */
+    private function create_image_widget($url, $alt = '') {
+        return array(
+            'id' => $this->generate_elementor_id(),
+            'elType' => 'widget',
+            'widgetType' => 'image',
+            'settings' => array(
+                'image' => array(
+                    'url' => $url,
+                    'alt' => $alt,
+                ),
+                'image_size' => 'full',
+                'align' => 'center',
+            ),
+            'elements' => array(),
+        );
+    }
+    
+    /**
+     * Create Elementor HTML widget for raw HTML content
+     */
+    private function create_html_widget($html) {
+        return array(
+            'id' => $this->generate_elementor_id(),
+            'elType' => 'widget',
+            'widgetType' => 'html',
+            'settings' => array(
+                'html' => $html,
+            ),
+            'elements' => array(),
+        );
+    }
+    
+    /**
+     * Generate random Elementor element ID
+     */
+    private function generate_elementor_id() {
+        return substr(str_shuffle('abcdefghijklmnopqrstuvwxyz0123456789'), 0, 7);
+    }
+    
+    /**
+     * Get inner HTML of a DOMNode
+     */
+    private function get_inner_html($dom, $node) {
+        $inner = '';
+        foreach ($node->childNodes as $child) {
+            $inner .= $dom->saveHTML($child);
+        }
+        return $inner;
     }
 }
 
