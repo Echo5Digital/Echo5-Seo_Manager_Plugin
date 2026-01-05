@@ -3,7 +3,7 @@
  * Plugin Name: Echo5 Seo Manager Plugin
  * Plugin URI: https://echo5digital.com
  * Description: Exports complete SEO data via REST API for Echo5 SEO Management Platform - Now with Publishing support!
- * Version: 2.0.0
+ * Version: 2.1.1
  * Author: Echo5 Digital
  * Author URI: https://echo5digital.com
  * License: GPL v2 or later
