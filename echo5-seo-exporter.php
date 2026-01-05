@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('ECHO5_SEO_VERSION', '2.0.0');
+define('ECHO5_SEO_VERSION', '2.1.1');
 define('ECHO5_SEO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ECHO5_SEO_PLUGIN_URL', plugin_dir_url(__FILE__));
 
