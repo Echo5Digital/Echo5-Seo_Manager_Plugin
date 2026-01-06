@@ -397,19 +397,52 @@ class Echo5_Publisher {
                 update_post_meta($page_id, '_echo5_hide_title', true);
             }
             
-            // Step 9: Convert to Elementor format if Elementor is active
-            $use_elementor = isset($page_data['use_elementor']) ? $page_data['use_elementor'] : true;
-            if ($use_elementor && $this->is_elementor_active()) {
-                $elementor_data = $this->convert_html_to_elementor($final_content);
-                if (!empty($elementor_data)) {
-                    update_post_meta($page_id, '_elementor_data', wp_slash($elementor_data));
-                    update_post_meta($page_id, '_elementor_edit_mode', 'builder');
-                    update_post_meta($page_id, '_elementor_template_type', 'wp-page');
-                    update_post_meta($page_id, '_elementor_version', defined('ELEMENTOR_VERSION') ? ELEMENTOR_VERSION : '3.0.0');
-                    
-                    // Clear Elementor cache for this page
-                    if (class_exists('\Elementor\Plugin')) {
-                        \Elementor\Plugin::$instance->files_manager->clear_cache();
+            // Step 8.6: Handle custom CSS for page
+            $custom_css = isset($content_data['custom_css']) ? $content_data['custom_css'] : null;
+            if (!empty($custom_css)) {
+                // Add to page settings for Elementor
+                $page_settings = get_post_meta($page_id, '_elementor_page_settings', true);
+                if (!is_array($page_settings)) {
+                    $page_settings = array();
+                }
+                $page_settings['custom_css'] = $custom_css;
+                update_post_meta($page_id, '_elementor_page_settings', $page_settings);
+                
+                // Also save as post meta for non-Elementor themes
+                update_post_meta($page_id, '_echo5_custom_css', $custom_css);
+            }
+            
+            // Step 9: Handle Elementor data
+            // Option 1: Direct elementor_data provided in content
+            $direct_elementor_data = isset($content_data['elementor_data']) ? $content_data['elementor_data'] : null;
+            
+            if (!empty($direct_elementor_data) && $this->is_elementor_active()) {
+                // Direct Elementor JSON provided - use it as-is
+                $elementor_json = is_string($direct_elementor_data) ? $direct_elementor_data : json_encode($direct_elementor_data);
+                update_post_meta($page_id, '_elementor_data', wp_slash($elementor_json));
+                update_post_meta($page_id, '_elementor_edit_mode', 'builder');
+                update_post_meta($page_id, '_elementor_template_type', 'wp-page');
+                update_post_meta($page_id, '_elementor_version', defined('ELEMENTOR_VERSION') ? ELEMENTOR_VERSION : '3.0.0');
+                
+                // Clear Elementor cache
+                if (class_exists('\Elementor\Plugin')) {
+                    \Elementor\Plugin::$instance->files_manager->clear_cache();
+                }
+            } else {
+                // Option 2: Convert HTML to Elementor format if enabled
+                $use_elementor = isset($page_data['use_elementor']) ? $page_data['use_elementor'] : true;
+                if ($use_elementor && $this->is_elementor_active()) {
+                    $elementor_data = $this->convert_html_to_elementor($final_content);
+                    if (!empty($elementor_data)) {
+                        update_post_meta($page_id, '_elementor_data', wp_slash($elementor_data));
+                        update_post_meta($page_id, '_elementor_edit_mode', 'builder');
+                        update_post_meta($page_id, '_elementor_template_type', 'wp-page');
+                        update_post_meta($page_id, '_elementor_version', defined('ELEMENTOR_VERSION') ? ELEMENTOR_VERSION : '3.0.0');
+                        
+                        // Clear Elementor cache for this page
+                        if (class_exists('\Elementor\Plugin')) {
+                            \Elementor\Plugin::$instance->files_manager->clear_cache();
+                        }
                     }
                 }
             }
