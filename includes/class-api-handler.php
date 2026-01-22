@@ -147,6 +147,39 @@ class Echo5_SEO_API_Handler {
                 ),
             ),
         ));
+        
+        // Update SEO data for a page/post
+        register_rest_route($this->namespace, '/update-seo/(?P<id>\d+)', array(
+            'methods' => 'POST',
+            'callback' => array($this, 'update_seo'),
+            'permission_callback' => array($this->security, 'verify_api_key'),
+            'args' => array(
+                'meta_title' => array(
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+                'meta_description' => array(
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+                'focus_keyword' => array(
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+                'canonical' => array(
+                    'sanitize_callback' => 'esc_url_raw',
+                ),
+                'og_title' => array(
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+                'og_description' => array(
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+                'og_image' => array(
+                    'sanitize_callback' => 'esc_url_raw',
+                ),
+                'schema' => array(
+                    'sanitize_callback' => 'wp_kses_post',
+                ),
+            ),
+        ));
     }
     
     /**
@@ -344,5 +377,98 @@ class Echo5_SEO_API_Handler {
                 array('status' => 500)
             );
         }
+    }
+    
+    /**
+     * Update SEO data for a page/post
+     * Applies fix suggestions directly to the WordPress page
+     */
+    public function update_seo($request) {
+        $post_id = absint($request->get_param('id'));
+        
+        // Verify post exists
+        $post = get_post($post_id);
+        if (!$post) {
+            return new WP_Error(
+                'post_not_found',
+                'Page or post not found',
+                array('status' => 404)
+            );
+        }
+        
+        // Initialize SEO Meta Handler
+        $seo_handler = new Echo5_SEO_Meta_Handler();
+        
+        // Collect updates to apply
+        $updates = array();
+        $results = array();
+        
+        // Update title
+        if ($request->has_param('meta_title')) {
+            $updates['meta_title'] = $request->get_param('meta_title');
+        }
+        
+        // Update meta description
+        if ($request->has_param('meta_description')) {
+            $updates['meta_description'] = $request->get_param('meta_description');
+        }
+        
+        // Update focus keyword
+        if ($request->has_param('focus_keyword')) {
+            $updates['focus_keyword'] = $request->get_param('focus_keyword');
+        }
+        
+        // Update canonical URL
+        if ($request->has_param('canonical')) {
+            $updates['canonical'] = $request->get_param('canonical');
+        }
+        
+        // Update Open Graph
+        if ($request->has_param('og_title')) {
+            $updates['og_title'] = $request->get_param('og_title');
+        }
+        if ($request->has_param('og_description')) {
+            $updates['og_description'] = $request->get_param('og_description');
+        }
+        if ($request->has_param('og_image')) {
+            $updates['og_image'] = $request->get_param('og_image');
+        }
+        
+        // Update page title (H1/post_title) if provided
+        if ($request->has_param('page_title')) {
+            $page_title = sanitize_text_field($request->get_param('page_title'));
+            wp_update_post(array(
+                'ID' => $post_id,
+                'post_title' => $page_title
+            ));
+            $results['page_title'] = true;
+        }
+        
+        // Update schema/structured data
+        if ($request->has_param('schema')) {
+            $schema = $request->get_param('schema');
+            // Store as custom post meta - can be used by theme or outputted via our plugin
+            update_post_meta($post_id, '_echo5_structured_data', $schema);
+            $results['schema'] = true;
+        }
+        
+        // Apply SEO meta updates using the handler
+        if (!empty($updates)) {
+            $seo_results = $seo_handler->save_all_meta($post_id, $updates);
+            $results = array_merge($results, $seo_results);
+        }
+        
+        // Log the update
+        update_post_meta($post_id, '_echo5_last_seo_update', current_time('mysql'));
+        update_post_meta($post_id, '_echo5_seo_update_source', 'manager_api');
+        
+        return rest_ensure_response(array(
+            'success' => true,
+            'post_id' => $post_id,
+            'updates_applied' => array_keys($updates),
+            'results' => $results,
+            'message' => 'SEO data updated successfully',
+            'timestamp' => current_time('mysql'),
+        ));
     }
 }

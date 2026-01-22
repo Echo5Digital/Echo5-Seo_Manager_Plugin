@@ -5,6 +5,17 @@ All notable changes to the Echo5 Seo Manager Plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.6] - 2026-01-22
+
+### Added
+- **SEO Update API**: New `POST /update-seo/{id}` endpoint to apply SEO fixes directly from the manager
+- Support for updating meta title, meta description, focus keyword, canonical URL
+- Support for updating Open Graph tags (title, description, image)
+- Support for updating structured data/schema markup
+- Support for updating page title (H1/post_title)
+- Multi-plugin compatibility via SEO Meta Handler (Yoast, RankMath, AIOSEO, SEOPress, etc.)
+- Tracking fields for SEO update history (_echo5_last_seo_update, _echo5_seo_update_source)
+
 ## [2.0.0] - 2025-12-30
 
 ### Added - Publisher System
