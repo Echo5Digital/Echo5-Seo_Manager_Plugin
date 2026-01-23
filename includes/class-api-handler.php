@@ -437,11 +437,26 @@ class Echo5_SEO_API_Handler {
         // Update page title (H1/post_title) if provided
         if ($request->has_param('page_title')) {
             $page_title = sanitize_text_field($request->get_param('page_title'));
+            
+            // Update WordPress post_title
             wp_update_post(array(
                 'ID' => $post_id,
                 'post_title' => $page_title
             ));
             $results['page_title'] = true;
+            
+            // Also try to update Elementor H1 heading widget if present
+            $elementor_data = get_post_meta($post_id, '_elementor_data', true);
+            if (!empty($elementor_data)) {
+                $data = is_string($elementor_data) ? json_decode($elementor_data, true) : $elementor_data;
+                if (is_array($data)) {
+                    $updated = $this->update_elementor_h1($data, $page_title);
+                    if ($updated['found']) {
+                        update_post_meta($post_id, '_elementor_data', wp_slash(json_encode($updated['data'])));
+                        $results['elementor_h1'] = true;
+                    }
+                }
+            }
         }
         
         // Update schema/structured data
@@ -494,6 +509,15 @@ class Echo5_SEO_API_Handler {
             $results = array_merge($results, $seo_results);
         }
         
+        // Build the list of all updates applied (including page_title and schema)
+        $all_updates = array_keys($updates);
+        if (!empty($results['page_title'])) {
+            $all_updates[] = 'page_title';
+        }
+        if (!empty($results['schema'])) {
+            $all_updates[] = 'schema';
+        }
+        
         // Log the update
         update_post_meta($post_id, '_echo5_last_seo_update', current_time('mysql'));
         update_post_meta($post_id, '_echo5_seo_update_source', 'manager_api');
@@ -501,8 +525,9 @@ class Echo5_SEO_API_Handler {
         return rest_ensure_response(array(
             'success' => true,
             'post_id' => $post_id,
-            'updates_applied' => array_keys($updates),
+            'updates_applied' => $all_updates,
             'results' => $results,
+            'seo_plugin' => $seo_handler->get_active_seo_plugin(),
             'message' => 'SEO data updated successfully',
             'timestamp' => current_time('mysql'),
         ));
@@ -542,5 +567,45 @@ class Echo5_SEO_API_Handler {
         $html .= "<!-- ECHO5:END SCHEMA -->\n";
         
         return $html;
+    }
+    
+    /**
+     * Update the first H1 heading widget in Elementor data
+     * Recursively searches for heading widget with tag h1 and updates its title
+     * 
+     * @param array $elements Elementor elements array
+     * @param string $new_title New H1 title text
+     * @return array ['found' => bool, 'data' => modified elements]
+     */
+    private function update_elementor_h1($elements, $new_title) {
+        $found = false;
+        
+        foreach ($elements as &$element) {
+            // Check if this is a heading widget with h1 tag
+            if (isset($element['widgetType']) && $element['widgetType'] === 'heading') {
+                $tag = isset($element['settings']['header_size']) ? $element['settings']['header_size'] : 'h2';
+                if ($tag === 'h1') {
+                    // Found the H1 heading - update it
+                    $element['settings']['title'] = $new_title;
+                    $found = true;
+                    break; // Only update the first H1
+                }
+            }
+            
+            // Recursively check child elements
+            if (!$found && isset($element['elements']) && is_array($element['elements'])) {
+                $child_result = $this->update_elementor_h1($element['elements'], $new_title);
+                if ($child_result['found']) {
+                    $element['elements'] = $child_result['data'];
+                    $found = true;
+                    break;
+                }
+            }
+        }
+        
+        return array(
+            'found' => $found,
+            'data' => $elements
+        );
     }
 }

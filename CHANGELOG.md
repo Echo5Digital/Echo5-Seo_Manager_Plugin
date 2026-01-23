@@ -5,6 +5,16 @@ All notable changes to the Echo5 Seo Manager Plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.8] - 2026-01-23
+
+### Fixed
+- **H1 Update for Elementor**: Now updates Elementor heading widget with H1 tag (not just post_title)
+- Response now includes `seo_plugin` detected and proper `updates_applied` list
+- Improved update tracking for page_title and schema in API response
+
+### Changed
+- H1 category applies to both WordPress post_title AND first Elementor H1 heading widget
+
 ## [2.1.7] - 2026-01-23
 
 ### Fixed
