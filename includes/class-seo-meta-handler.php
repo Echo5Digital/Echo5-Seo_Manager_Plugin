@@ -514,9 +514,38 @@ class Echo5_SEO_Meta_Handler {
         }
         
         global $post;
-        $schemas = get_post_meta($post->ID, '_echo5_schemas', true);
         
+        // Check both meta keys for schemas
+        $schemas = get_post_meta($post->ID, '_echo5_schemas', true);
+        $structured_data = get_post_meta($post->ID, '_echo5_structured_data', true);
+        
+        // Merge both sources
         if (empty($schemas) || !is_array($schemas)) {
+            $schemas = array();
+        }
+        
+        // Add structured_data if available
+        if (!empty($structured_data)) {
+            // Parse if it's a string
+            if (is_string($structured_data)) {
+                $parsed = json_decode($structured_data, true);
+                if ($parsed) {
+                    $structured_data = $parsed;
+                }
+            }
+            
+            if (is_array($structured_data)) {
+                // If it has @graph or @type, wrap it properly
+                if (isset($structured_data['@graph']) || isset($structured_data['@type'])) {
+                    $schemas['structured_data'] = $structured_data;
+                } else {
+                    // It might already be keyed by type
+                    $schemas = array_merge($schemas, $structured_data);
+                }
+            }
+        }
+        
+        if (empty($schemas)) {
             return;
         }
         

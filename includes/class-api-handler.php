@@ -447,9 +447,45 @@ class Echo5_SEO_API_Handler {
         // Update schema/structured data
         if ($request->has_param('schema')) {
             $schema = $request->get_param('schema');
-            // Store as custom post meta - can be used by theme or outputted via our plugin
-            update_post_meta($post_id, '_echo5_structured_data', $schema);
+            
+            // Parse schema if it's a string
+            $schema_data = $schema;
+            if (is_string($schema)) {
+                $parsed = json_decode($schema, true);
+                if ($parsed) {
+                    $schema_data = $parsed;
+                }
+            }
+            
+            // Store in both meta keys for compatibility
+            update_post_meta($post_id, '_echo5_structured_data', $schema_data);
+            update_post_meta($post_id, '_echo5_schemas', array('main' => $schema_data));
+            
+            // Also inject schema into page content (HTML widget) for Elementor compatibility
+            $current_content = $post->post_content;
+            $schema_html = $this->build_schema_html($schema_data);
+            
+            // Check if schema marker exists in content
+            if (preg_match('/<!-- ECHO5:START SCHEMA -->.*?<!-- ECHO5:END SCHEMA -->/s', $current_content)) {
+                // Replace existing schema
+                $new_content = preg_replace(
+                    '/<!-- ECHO5:START SCHEMA -->.*?<!-- ECHO5:END SCHEMA -->/s',
+                    $schema_html,
+                    $current_content
+                );
+            } else {
+                // Append schema to content
+                $new_content = $current_content . "\n" . $schema_html;
+            }
+            
+            // Update post content with schema
+            wp_update_post(array(
+                'ID' => $post_id,
+                'post_content' => $new_content
+            ));
+            
             $results['schema'] = true;
+            $results['schema_injected'] = true;
         }
         
         // Apply SEO meta updates using the handler
@@ -470,5 +506,41 @@ class Echo5_SEO_API_Handler {
             'message' => 'SEO data updated successfully',
             'timestamp' => current_time('mysql'),
         ));
+    }
+    
+    /**
+     * Build schema HTML for injection into page content
+     * Creates JSON-LD script tags wrapped in Echo5 markers
+     */
+    private function build_schema_html($schema_data) {
+        $html = "\n<!-- ECHO5:START SCHEMA -->\n";
+        
+        if (is_array($schema_data)) {
+            // Check if it's a single schema object or multiple
+            if (isset($schema_data['@context']) || isset($schema_data['@type']) || isset($schema_data['@graph'])) {
+                // Single schema object
+                $html .= '<script type="application/ld+json">' . "\n";
+                $html .= json_encode($schema_data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                $html .= "\n</script>\n";
+            } else {
+                // Multiple schemas keyed by type
+                foreach ($schema_data as $type => $schema) {
+                    if (!empty($schema)) {
+                        $html .= '<script type="application/ld+json">' . "\n";
+                        $html .= json_encode($schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                        $html .= "\n</script>\n";
+                    }
+                }
+            }
+        } elseif (is_string($schema_data) && !empty($schema_data)) {
+            // Already a JSON string, wrap it
+            $html .= '<script type="application/ld+json">' . "\n";
+            $html .= $schema_data;
+            $html .= "\n</script>\n";
+        }
+        
+        $html .= "<!-- ECHO5:END SCHEMA -->\n";
+        
+        return $html;
     }
 }

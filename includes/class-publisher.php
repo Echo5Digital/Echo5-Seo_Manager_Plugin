@@ -379,6 +379,12 @@ class Echo5_Publisher {
             update_post_meta($page_id, '_echo5_last_sync', current_time('mysql'));
             update_post_meta($page_id, '_echo5_update_mode', $page_data['update_mode']);
             
+            // Step 8a: Save schema data to meta for wp_head output (backup to content injection)
+            if (!empty($schema_data)) {
+                update_post_meta($page_id, '_echo5_structured_data', $schema_data);
+                update_post_meta($page_id, '_echo5_schemas', $schema_data);
+            }
+            
             // Step 8.5: Handle page template and layout options
             if (!empty($page_data['template'])) {
                 update_post_meta($page_id, '_wp_page_template', $page_data['template']);

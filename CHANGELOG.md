@@ -5,6 +5,19 @@ All notable changes to the Echo5 Seo Manager Plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.7] - 2026-01-23
+
+### Fixed
+- **Schema Injection**: Schema/structured data now properly injected into page content (not just meta)
+- Schema saved to both `_echo5_structured_data` and `_echo5_schemas` meta keys for redundancy
+- Schema HTML wrapped with Echo5 markers for clean updates
+- **Rollback Enhancement**: Version rollback now restores SEO meta fields (title, description, keywords)
+- SEO Meta Handler checks both schema meta keys for wp_head output
+
+### Improved
+- Blueprint publish now saves schema to meta keys during page creation
+- Better schema parsing in update-seo endpoint
+
 ## [2.1.6] - 2026-01-22
 
 ### Added
