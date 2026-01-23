@@ -60,7 +60,8 @@ class Echo5_Publisher {
         ));
         
         // Get page by slug (for sync checking)
-        register_rest_route($this->namespace, '/page-by-slug/(?P<slug>[a-zA-Z0-9-]+)', array(
+        // Regex allows alphanumeric, hyphens, underscores, dots, and percent-encoded chars
+        register_rest_route($this->namespace, '/page-by-slug/(?P<slug>[a-zA-Z0-9\-_\.%]+)', array(
             'methods' => 'GET',
             'callback' => array($this, 'get_page_by_slug'),
             'permission_callback' => array($this->security, 'verify_api_key'),
@@ -590,45 +591,75 @@ class Echo5_Publisher {
     }
     
     /**
-     * Rollback to previous version
+     * Rollback to previous version (includes SEO meta restoration)
      */
     public function rollback_page($request) {
         $page_id = intval($request->get_param('page_id'));
         $version = intval($request->get_param('version'));
         
         $page = get_post($page_id);
-        if (!$page || $page->post_type !== 'page') {
+        if (!$page || ($page->post_type !== 'page' && $page->post_type !== 'post')) {
             return new WP_Error('not_found', 'Page not found', array('status' => 404));
         }
         
-        // Get version content
-        $version_content = get_post_meta($page_id, '_echo5_version_' . $version, true);
-        if (empty($version_content)) {
+        // Get version data
+        $version_data = get_post_meta($page_id, '_echo5_version_' . $version, true);
+        if (empty($version_data)) {
             return new WP_Error('version_not_found', 'Version not found', array('status' => 404));
         }
         
         // Save current as new version before rollback
         $this->save_version_snapshot($page_id, $page->post_content);
         
-        // Update with version content
-        $result = wp_update_post(array(
-            'ID' => $page_id,
-            'post_content' => $version_content,
-        ), true);
+        // Decode snapshot - handle both old format (string content) and new format (JSON with seo_meta)
+        $snapshot = json_decode($version_data, true);
+        $content_to_restore = null;
+        $seo_meta_to_restore = null;
+        $title_to_restore = null;
+        
+        if (is_array($snapshot) && isset($snapshot['content'])) {
+            // New format with SEO meta
+            $content_to_restore = $snapshot['content'];
+            $seo_meta_to_restore = isset($snapshot['seo_meta']) ? $snapshot['seo_meta'] : null;
+            $title_to_restore = isset($snapshot['post_title']) ? $snapshot['post_title'] : null;
+        } else {
+            // Old format - just content string
+            $content_to_restore = $version_data;
+        }
+        
+        // Update post content
+        $update_data = array('ID' => $page_id);
+        if ($content_to_restore !== null) {
+            $update_data['post_content'] = $content_to_restore;
+        }
+        if ($title_to_restore !== null) {
+            $update_data['post_title'] = $title_to_restore;
+        }
+        
+        $result = wp_update_post($update_data, true);
         
         if (is_wp_error($result)) {
             return $result;
         }
         
+        // Restore SEO meta if available
+        $seo_restored = false;
+        if ($seo_meta_to_restore) {
+            $this->restore_seo_meta_snapshot($page_id, $seo_meta_to_restore);
+            $seo_restored = true;
+        }
+        
         $this->log_action('rollback_success', array(
             'page_id' => $page_id,
             'rolled_back_to_version' => $version,
+            'seo_meta_restored' => $seo_restored,
         ));
         
         return rest_ensure_response(array(
             'success' => true,
             'page_id' => $page_id,
             'rolled_back_to_version' => $version,
+            'seo_meta_restored' => $seo_restored,
             'page_url' => get_permalink($page_id),
         ));
     }
@@ -717,9 +748,10 @@ class Echo5_Publisher {
     }
     
     /**
-     * Find page by slug
+     * Find page by slug (searches pages first, then posts)
      */
     private function find_page_by_slug($slug) {
+        // First try pages
         $args = array(
             'name' => sanitize_title($slug),
             'post_type' => 'page',
@@ -728,9 +760,23 @@ class Echo5_Publisher {
         );
         
         $pages = get_posts($args);
-        return !empty($pages) ? $pages[0] : null;
+        if (!empty($pages)) {
+            return $pages[0];
+        }
+        
+        // Then try posts
+        $args['post_type'] = 'post';
+        $posts = get_posts($args);
+        if (!empty($posts)) {
+            return $posts[0];
+        }
+        
+        // Try any public post type as fallback
+        $args['post_type'] = 'any';
+        $any = get_posts($args);
+        return !empty($any) ? $any[0] : null;
     }
-    
+
     /**
      * Apply safe update - only replace content within Echo5 markers
      */
@@ -828,11 +874,19 @@ class Echo5_Publisher {
     }
     
     /**
-     * Save version snapshot
+     * Save version snapshot including SEO meta
      */
     private function save_version_snapshot($page_id, $content) {
         $version_key = '_echo5_version_' . time();
-        update_post_meta($page_id, $version_key, $content);
+        
+        // Build snapshot with content AND SEO meta
+        $snapshot = array(
+            'content' => $content,
+            'seo_meta' => $this->get_seo_meta_snapshot($page_id),
+            'post_title' => get_the_title($page_id),
+        );
+        
+        update_post_meta($page_id, $version_key, wp_json_encode($snapshot));
         
         // Increment version count
         $count = intval(get_post_meta($page_id, '_echo5_version_count', true));
@@ -840,6 +894,78 @@ class Echo5_Publisher {
         
         // Cleanup old versions (keep last 10)
         $this->cleanup_old_versions($page_id, 10);
+    }
+    
+    /**
+     * Get SEO meta snapshot for versioning
+     */
+    private function get_seo_meta_snapshot($page_id) {
+        $meta_keys = array(
+            // RankMath
+            'rank_math_title',
+            'rank_math_description',
+            'rank_math_focus_keyword',
+            'rank_math_canonical_url',
+            'rank_math_facebook_title',
+            'rank_math_facebook_description',
+            'rank_math_facebook_image',
+            'rank_math_twitter_title',
+            'rank_math_twitter_description',
+            // Yoast
+            '_yoast_wpseo_title',
+            '_yoast_wpseo_metadesc',
+            '_yoast_wpseo_focuskw',
+            '_yoast_wpseo_canonical',
+            '_yoast_wpseo_opengraph-title',
+            '_yoast_wpseo_opengraph-description',
+            '_yoast_wpseo_opengraph-image',
+            '_yoast_wpseo_twitter-title',
+            '_yoast_wpseo_twitter-description',
+            // AIOSEO
+            '_aioseo_title',
+            '_aioseo_description',
+            '_aioseo_keywords',
+            // SEOPress
+            '_seopress_titles_title',
+            '_seopress_titles_desc',
+            '_seopress_analysis_target_kw',
+            // The SEO Framework
+            '_genesis_title',
+            '_genesis_description',
+            'focus_keyword',
+            // Echo5 fallbacks
+            '_echo5_seo_title',
+            '_echo5_seo_description',
+            '_echo5_focus_keyword',
+            '_echo5_canonical',
+        );
+        
+        $snapshot = array();
+        foreach ($meta_keys as $key) {
+            $value = get_post_meta($page_id, $key, true);
+            if ($value !== '' && $value !== false) {
+                $snapshot[$key] = $value;
+            }
+        }
+        
+        return $snapshot;
+    }
+    
+    /**
+     * Restore SEO meta from snapshot
+     */
+    private function restore_seo_meta_snapshot($page_id, $seo_meta) {
+        if (empty($seo_meta) || !is_array($seo_meta)) {
+            return;
+        }
+        
+        foreach ($seo_meta as $key => $value) {
+            if ($value === '' || $value === null) {
+                delete_post_meta($page_id, $key);
+            } else {
+                update_post_meta($page_id, $key, $value);
+            }
+        }
     }
     
     /**
