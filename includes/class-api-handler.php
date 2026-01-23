@@ -527,7 +527,6 @@ class Echo5_SEO_API_Handler {
             'post_id' => $post_id,
             'updates_applied' => $all_updates,
             'results' => $results,
-            'seo_plugin' => $seo_handler->get_active_seo_plugin(),
             'message' => 'SEO data updated successfully',
             'timestamp' => current_time('mysql'),
         ));
