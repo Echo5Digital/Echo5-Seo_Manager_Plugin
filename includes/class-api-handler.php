@@ -445,15 +445,24 @@ class Echo5_SEO_API_Handler {
             ));
             $results['page_title'] = true;
             
-            // Also try to update Elementor H1 heading widget if present
+            // Also try to update/create Elementor H1 heading widget
             $elementor_data = get_post_meta($post_id, '_elementor_data', true);
             if (!empty($elementor_data)) {
                 $data = is_string($elementor_data) ? json_decode($elementor_data, true) : $elementor_data;
-                if (is_array($data)) {
+                if (is_array($data) && !empty($data)) {
                     $updated = $this->update_elementor_h1($data, $page_title);
                     if ($updated['found']) {
                         update_post_meta($post_id, '_elementor_data', wp_slash(json_encode($updated['data'])));
                         $results['elementor_h1'] = true;
+                        
+                        // Report how the H1 was handled
+                        if (!empty($updated['created'])) {
+                            $results['elementor_h1_action'] = 'created';
+                        } elseif (!empty($updated['converted'])) {
+                            $results['elementor_h1_action'] = 'converted_from_h2';
+                        } else {
+                            $results['elementor_h1_action'] = 'updated';
+                        }
                     }
                 }
             }
@@ -569,31 +578,67 @@ class Echo5_SEO_API_Handler {
     }
     
     /**
-     * Update the first H1 heading widget in Elementor data
-     * Recursively searches for heading widget with tag h1 and updates its title
+     * Update or create an H1 heading widget in Elementor data
+     * First tries to find and update existing H1, then tries to convert first H2/H3 to H1,
+     * and finally adds a new H1 section at the top if none exists
      * 
      * @param array $elements Elementor elements array
      * @param string $new_title New H1 title text
-     * @return array ['found' => bool, 'data' => modified elements]
+     * @return array ['found' => bool, 'created' => bool, 'converted' => bool, 'data' => modified elements]
      */
     private function update_elementor_h1($elements, $new_title) {
+        // First, try to find and update existing H1
+        $result = $this->find_and_update_h1($elements, $new_title);
+        if ($result['found']) {
+            return array(
+                'found' => true,
+                'created' => false,
+                'converted' => false,
+                'data' => $result['data']
+            );
+        }
+        
+        // No H1 found - try to convert the first H2 or H3 to H1
+        $result = $this->convert_first_heading_to_h1($elements, $new_title);
+        if ($result['found']) {
+            return array(
+                'found' => true,
+                'created' => false,
+                'converted' => true,
+                'data' => $result['data']
+            );
+        }
+        
+        // No headings found at all - add H1 section at the top
+        $h1_section = $this->create_h1_section($new_title);
+        array_unshift($elements, $h1_section);
+        
+        return array(
+            'found' => true,
+            'created' => true,
+            'converted' => false,
+            'data' => $elements
+        );
+    }
+    
+    /**
+     * Find and update existing H1 heading
+     */
+    private function find_and_update_h1(&$elements, $new_title) {
         $found = false;
         
         foreach ($elements as &$element) {
-            // Check if this is a heading widget with h1 tag
             if (isset($element['widgetType']) && $element['widgetType'] === 'heading') {
                 $tag = isset($element['settings']['header_size']) ? $element['settings']['header_size'] : 'h2';
                 if ($tag === 'h1') {
-                    // Found the H1 heading - update it
                     $element['settings']['title'] = $new_title;
                     $found = true;
-                    break; // Only update the first H1
+                    break;
                 }
             }
             
-            // Recursively check child elements
             if (!$found && isset($element['elements']) && is_array($element['elements'])) {
-                $child_result = $this->update_elementor_h1($element['elements'], $new_title);
+                $child_result = $this->find_and_update_h1($element['elements'], $new_title);
                 if ($child_result['found']) {
                     $element['elements'] = $child_result['data'];
                     $found = true;
@@ -602,9 +647,79 @@ class Echo5_SEO_API_Handler {
             }
         }
         
+        return array('found' => $found, 'data' => $elements);
+    }
+    
+    /**
+     * Convert the first H2 or H3 heading to H1
+     */
+    private function convert_first_heading_to_h1(&$elements, $new_title) {
+        $found = false;
+        
+        foreach ($elements as &$element) {
+            if (isset($element['widgetType']) && $element['widgetType'] === 'heading') {
+                $tag = isset($element['settings']['header_size']) ? $element['settings']['header_size'] : 'h2';
+                if ($tag === 'h2' || $tag === 'h3') {
+                    // Convert to H1 and update title
+                    $element['settings']['header_size'] = 'h1';
+                    $element['settings']['title'] = $new_title;
+                    $found = true;
+                    break;
+                }
+            }
+            
+            if (!$found && isset($element['elements']) && is_array($element['elements'])) {
+                $child_result = $this->convert_first_heading_to_h1($element['elements'], $new_title);
+                if ($child_result['found']) {
+                    $element['elements'] = $child_result['data'];
+                    $found = true;
+                    break;
+                }
+            }
+        }
+        
+        return array('found' => $found, 'data' => $elements);
+    }
+    
+    /**
+     * Create a new H1 section for Elementor
+     */
+    private function create_h1_section($title) {
+        $section_id = $this->generate_elementor_id();
+        $column_id = $this->generate_elementor_id();
+        $widget_id = $this->generate_elementor_id();
+        
         return array(
-            'found' => $found,
-            'data' => $elements
+            'id' => $section_id,
+            'elType' => 'section',
+            'settings' => array(),
+            'elements' => array(
+                array(
+                    'id' => $column_id,
+                    'elType' => 'column',
+                    'settings' => array('_column_size' => 100),
+                    'elements' => array(
+                        array(
+                            'id' => $widget_id,
+                            'elType' => 'widget',
+                            'widgetType' => 'heading',
+                            'settings' => array(
+                                'title' => $title,
+                                'header_size' => 'h1',
+                                'align' => 'left'
+                            ),
+                            'elements' => array()
+                        )
+                    )
+                )
+            )
         );
+    }
+    
+    /**
+     * Generate a unique Elementor element ID (8 character hex)
+     */
+    private function generate_elementor_id() {
+        return substr(md5(uniqid(mt_rand(), true)), 0, 8);
     }
 }

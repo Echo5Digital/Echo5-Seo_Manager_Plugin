@@ -5,6 +5,15 @@ All notable changes to the Echo5 Seo Manager Plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-01-23
+
+### Added
+- **H1 Creation**: If page has no H1 heading, plugin now creates one:
+  1. First tries to find and update existing H1
+  2. If no H1, converts first H2/H3 to H1 with new title
+  3. If no headings at all, adds new H1 section at top of page
+- Response now includes `elementor_h1_action` to report what was done (created/converted/updated)
+
 ## [2.1.9] - 2026-01-23
 
 ### Fixed
