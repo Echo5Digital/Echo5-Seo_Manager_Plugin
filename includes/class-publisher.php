@@ -262,10 +262,10 @@ class Echo5_Publisher {
                     $existing_page->post_content,
                     $content_data['html']
                 );
-                $final_content = $this->wrap_with_tailwind($merged_content);
+                $final_content = $this->wrap_with_echo5_styles($merged_content);
             } else {
-                // Full update mode - wrap new content with Tailwind
-                $final_content = $this->wrap_with_tailwind($content_data['html']);
+                // Full update mode - wrap new content
+                $final_content = $this->wrap_with_echo5_styles($content_data['html']);
             }
             
             // Step 3: Inject schemas into content
@@ -1032,76 +1032,16 @@ class Echo5_Publisher {
     }
     
     /**
-     * Wrap content with Tailwind CSS
-     * Adds Tailwind CDN and wraps content in a styled container
+     * Wrap content with Echo5 styles
+     * Lightweight wrapper — CSS is already included in the AI-generated HTML
      */
-    private function wrap_with_tailwind($html) {
-        // Check if content already has Tailwind wrapper
-        if (strpos($html, 'echo5-tailwind-content') !== false) {
+    private function wrap_with_echo5_styles($html) {
+        // Check if content already has the wrapper
+        if (strpos($html, 'echo5-page-content') !== false) {
             return $html;
         }
         
-        // Tailwind CDN script with config for WordPress compatibility
-        $tailwind_cdn = '
-<!-- Echo5 Tailwind CSS -->
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-tailwind.config = {
-    prefix: "",
-    important: ".echo5-tailwind-content",
-    corePlugins: {
-        preflight: false, // Disable base reset to avoid conflicts with WordPress
-    },
-    theme: {
-        extend: {
-            colors: {
-                primary: "#3b82f6",
-                secondary: "#64748b",
-            }
-        }
-    }
-}
-</script>
-<style>
-.echo5-tailwind-content {
-    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    line-height: 1.6;
-}
-.echo5-tailwind-content * {
-    box-sizing: border-box;
-}
-.echo5-tailwind-content h1, 
-.echo5-tailwind-content h2, 
-.echo5-tailwind-content h3, 
-.echo5-tailwind-content h4, 
-.echo5-tailwind-content h5, 
-.echo5-tailwind-content h6 {
-    font-weight: 700;
-    line-height: 1.25;
-    margin-bottom: 0.5em;
-}
-.echo5-tailwind-content h1 { font-size: 2.25rem; }
-.echo5-tailwind-content h2 { font-size: 1.875rem; }
-.echo5-tailwind-content h3 { font-size: 1.5rem; }
-.echo5-tailwind-content p { margin-bottom: 1rem; }
-.echo5-tailwind-content ul, .echo5-tailwind-content ol { margin-bottom: 1rem; padding-left: 1.5rem; }
-.echo5-tailwind-content li { margin-bottom: 0.25rem; }
-.echo5-tailwind-content a { color: #3b82f6; text-decoration: underline; }
-.echo5-tailwind-content a:hover { color: #2563eb; }
-.echo5-tailwind-content img { max-width: 100%; height: auto; }
-.echo5-tailwind-content .bg-gradient-to-r { background-image: linear-gradient(to right, var(--tw-gradient-stops)); }
-.echo5-tailwind-content .bg-gradient-to-br { background-image: linear-gradient(to bottom right, var(--tw-gradient-stops)); }
-</style>
-<!-- End Echo5 Tailwind CSS -->
-';
-        
-        // Wrap content in container
-        $wrapped = $tailwind_cdn . '
-<div class="echo5-tailwind-content">
-' . $html . '
-</div>';
-        
-        return $wrapped;
+        return '<div class="echo5-page-content">' . $html . '</div>';
     }
     
     /**
