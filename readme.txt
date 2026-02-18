@@ -4,7 +4,7 @@ Tags: seo, api, rest-api, export, seo-data
 Requires at least: 5.0
 Tested up to: 6.4
 Requires PHP: 7.4
-Stable tag: 2.2.0
+Stable tag: 2.2.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -82,6 +82,14 @@ Yes. The plugin uses API key authentication, supports IP whitelisting, and inclu
 The plugin automatically detects and exports data from Yoast SEO, Rank Math, and All in One SEO.
 
 == Changelog ==
+
+= 2.2.2 =
+* Maintenance release — stability improvements and minor fixes
+* Version bump for GitHub auto-updater compatibility
+
+= 2.2.0 =
+* H1 Creation: Plugin now creates H1 if page has none (converts H2/H3 or adds new section)
+* Response includes elementor_h1_action field reporting action taken
 
 = 1.0.0 =
 * Initial release
