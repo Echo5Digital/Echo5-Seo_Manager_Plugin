@@ -127,6 +127,22 @@ class Echo5_SEO_API_Handler {
                 ),
             ),
         ));
+
+        // Renderer capabilities endpoint for publisher/native Elementor mode
+        register_rest_route('echo5/v1', '/capabilities', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_capabilities'),
+            'permission_callback' => array($this->security, 'verify_api_key'),
+            'args' => array(
+                'api_key' => array(
+                    'required' => false,
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($param) {
+                        return is_string($param);
+                    }
+                ),
+            ),
+        ));
         
         // Regenerate API key (admin only)
         register_rest_route($this->namespace, '/admin/regenerate-key', array(
@@ -325,6 +341,89 @@ class Echo5_SEO_API_Handler {
             'php_version' => PHP_VERSION,
             'timestamp' => current_time('mysql'),
         ));
+    }
+
+    /**
+     * Get publishing/render capabilities for Echo5 publisher.
+     * Exposes Elementor + addon family availability.
+     */
+    public function get_capabilities($request) {
+        $active_plugins = $this->get_active_plugins();
+
+        $elementor_active = (
+            did_action('elementor/loaded') ||
+            class_exists('\Elementor\Plugin') ||
+            $this->is_plugin_active_by_fragment($active_plugins, array('elementor/elementor.php'))
+        );
+
+        $royal_elements_active = (
+            defined('WPR_ADDONS_VERSION') ||
+            did_action('wpr-addons/init') ||
+            $this->is_plugin_active_by_fragment($active_plugins, array(
+                'royal-elementor-addons',
+                'wpr-addons'
+            ))
+        );
+
+        $pro_elements_active = $this->is_plugin_active_by_fragment($active_plugins, array(
+            'pro-elements',
+            'proelements'
+        ));
+
+        $elementor_pro_active = (
+            defined('ELEMENTOR_PRO_VERSION') ||
+            $this->is_plugin_active_by_fragment($active_plugins, array(
+                'elementor-pro/elementor-pro.php'
+            ))
+        );
+
+        return rest_ensure_response(array(
+            'success' => true,
+            'data' => array(
+                'elementor' => array(
+                    'active' => $elementor_active,
+                    'version' => defined('ELEMENTOR_VERSION') ? ELEMENTOR_VERSION : null,
+                ),
+                'addon_families' => array(
+                    'royal_elements' => $royal_elements_active,
+                    'pro_elements' => $pro_elements_active,
+                    'elementor_pro' => $elementor_pro_active,
+                ),
+                'widget_families' => array(
+                    'core_elementor' => $elementor_active,
+                    'wpr' => $royal_elements_active,
+                    'pro_elements' => $pro_elements_active,
+                    'elementor_pro' => $elementor_pro_active,
+                ),
+                'timestamp' => current_time('mysql'),
+            ),
+        ));
+    }
+
+    /**
+     * Get active plugin file paths (single-site + multisite network-activated).
+     */
+    private function get_active_plugins() {
+        $active_plugins = (array) get_option('active_plugins', array());
+        if (is_multisite()) {
+            $network_plugins = array_keys((array) get_site_option('active_sitewide_plugins', array()));
+            $active_plugins = array_merge($active_plugins, $network_plugins);
+        }
+        return array_values(array_unique($active_plugins));
+    }
+
+    /**
+     * Check if any active plugin path contains one of the fragments.
+     */
+    private function is_plugin_active_by_fragment($active_plugins, $fragments) {
+        foreach ((array) $active_plugins as $plugin_path) {
+            foreach ((array) $fragments as $fragment) {
+                if (strpos($plugin_path, $fragment) !== false) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
     
     /**
