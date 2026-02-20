@@ -64,7 +64,7 @@ get_current_version() {
         exit 1
     fi
     
-    version=$(grep -E '^\s*\* Version:' "$PLUGIN_FILE" | sed -E 's/.*Version:\s*([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+    version=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' <<< "$(grep -E '^\s*\* Version:' "$PLUGIN_FILE")")
     
     if [[ -z "$version" ]]; then
         echo -e "${RED}ERROR: Could not find version${NC}"
