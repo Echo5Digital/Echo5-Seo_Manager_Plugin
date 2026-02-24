@@ -395,9 +395,9 @@ class Echo5_Publisher {
             remove_filter('content_filtered_save_pre', 'wp_filter_post_kses');
             add_filter('user_has_cap', array($this, 'allow_unfiltered_html'), 10, 3);
             
-            if (!empty($page_data['template'])) {
-                $post_data['page_template'] = $page_data['template'];
-            }
+            // NOTE: Do NOT set page_template in $post_data — WordPress validates it
+            // against theme templates and will reject Elementor-specific templates like
+            // 'elementor_canvas'. Instead, we set _wp_page_template via post meta after save.
             
             if ($existing_page) {
                 // Save version snapshot before updating
@@ -440,6 +440,9 @@ class Echo5_Publisher {
             }
             
             // Step 8.5: Handle page template and layout options
+            // Set via post meta to bypass wp_insert_post template validation.
+            // This allows Elementor-specific templates (elementor_canvas, elementor_header_footer)
+            // which aren't theme template files.
             if (!empty($page_data['template'])) {
                 update_post_meta($page_id, '_wp_page_template', $page_data['template']);
             }
