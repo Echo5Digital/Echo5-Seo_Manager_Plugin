@@ -5,6 +5,17 @@ All notable changes to the Echo5 Seo Manager Plugin will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.4] - 2026-02-24
+
+### Added
+- **Widget Compatibility Validation**: Scans Elementor data for Pro and Royal Elementor Addons widgets and warns if required plugins are not active
+- **Capabilities Endpoint**: `GET /echo5/v1/capabilities` reports installed Elementor addons and widget tiers
+- **Elementor CSS Regeneration**: Automatically regenerates page CSS after publish for proper addon widget rendering
+- **Image Widget Sizing**: Responsive width, height, and object-fit settings for Elementor image widgets
+
+### Changed
+- Restored Tailwind CSS wrapper (`wrap_with_tailwind`) for proper styling in non-Elementor publishing mode
+
 ## [2.2.2] - 2026-02-18
 
 ### Changed

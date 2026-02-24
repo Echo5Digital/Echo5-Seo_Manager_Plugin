@@ -4,7 +4,7 @@ Tags: seo, api, rest-api, export, seo-data
 Requires at least: 5.0
 Tested up to: 6.4
 Requires PHP: 7.4
-Stable tag: 2.2.2
+Stable tag: 2.2.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -82,6 +82,13 @@ Yes. The plugin uses API key authentication, supports IP whitelisting, and inclu
 The plugin automatically detects and exports data from Yoast SEO, Rank Math, and All in One SEO.
 
 == Changelog ==
+
+= 2.2.4 =
+* Added widget compatibility validation for Elementor Pro and Royal Elementor Addons
+* Added Elementor CSS regeneration after publish for addon widgets
+* Restored Tailwind CSS wrapper for proper styling in non-Elementor mode
+* Improved image widget sizing with responsive width, height, and object-fit settings
+* Added capabilities endpoint for detecting installed Elementor addons
 
 = 2.2.2 =
 * Maintenance release — stability improvements and minor fixes
