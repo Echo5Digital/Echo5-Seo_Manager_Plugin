@@ -87,6 +87,13 @@ class Echo5_Publisher {
             'permission_callback' => array($this->security, 'verify_api_key'),
         ));
         
+        // Capabilities endpoint - reports installed Elementor addons
+        register_rest_route($this->namespace, '/capabilities', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_capabilities'),
+            'permission_callback' => array($this->security, 'verify_api_key'),
+        ));
+
         // Scheduled publish endpoint
         register_rest_route($this->namespace, '/schedule-page', array(
             'methods' => 'POST',
@@ -224,6 +231,53 @@ class Echo5_Publisher {
     }
     
     /**
+     * Report installed Elementor addons and widget capabilities.
+     * Called by the backend before publishing to determine which widget tier to use.
+     */
+    public function get_capabilities($request) {
+        $has_elementor = defined('ELEMENTOR_VERSION') || class_exists('\Elementor\Plugin');
+        $elementor_version = defined('ELEMENTOR_VERSION') ? ELEMENTOR_VERSION : null;
+
+        $has_elementor_pro = defined('ELEMENTOR_PRO_VERSION');
+        $elementor_pro_version = defined('ELEMENTOR_PRO_VERSION') ? ELEMENTOR_PRO_VERSION : null;
+
+        $has_pro_elements = defined('PRO_ELEMENTS_VERSION')
+            || (function_exists('is_plugin_active') && is_plugin_active('pro-elements/pro-elements.php'));
+
+        $has_royal = defined('WPR_ADDONS_VERSION')
+            || (function_exists('is_plugin_active') && is_plugin_active('royal-elementor-addons/royal-elementor-addons.php'));
+
+        $pro_capable = $has_elementor_pro || $has_pro_elements;
+
+        return rest_ensure_response(array(
+            'success' => true,
+            'data' => array(
+                'elementor' => array(
+                    'active' => $has_elementor,
+                    'version' => $elementor_version,
+                ),
+                'addon_families' => array(
+                    'royal_elements' => $has_royal,
+                    'pro_elements' => $has_pro_elements,
+                    'elementor_pro' => $has_elementor_pro,
+                ),
+                'widget_families' => array(
+                    'core_elementor' => $has_elementor,
+                    'wpr' => $has_royal,
+                    'pro_elements' => $pro_capable,
+                    'elementor_pro' => $pro_capable,
+                ),
+                'versions' => array(
+                    'elementor' => $elementor_version,
+                    'elementor_pro' => $elementor_pro_version,
+                    'pro_elements' => defined('PRO_ELEMENTS_VERSION') ? PRO_ELEMENTS_VERSION : null,
+                    'royal_elementor_addons' => defined('WPR_ADDONS_VERSION') ? WPR_ADDONS_VERSION : null,
+                ),
+            ),
+        ));
+    }
+
+    /**
      * Main publish page endpoint
      */
     public function publish_page($request) {
@@ -262,10 +316,10 @@ class Echo5_Publisher {
                     $existing_page->post_content,
                     $content_data['html']
                 );
-                $final_content = $this->wrap_with_echo5_styles($merged_content);
+                $final_content = $this->wrap_with_tailwind($merged_content);
             } else {
-                // Full update mode - wrap new content
-                $final_content = $this->wrap_with_echo5_styles($content_data['html']);
+                // Full update mode - wrap new content with Tailwind
+                $final_content = $this->wrap_with_tailwind($content_data['html']);
             }
             
             // Step 3: Inject schemas into content
@@ -424,16 +478,26 @@ class Echo5_Publisher {
             $direct_elementor_data = isset($content_data['elementor_data']) ? $content_data['elementor_data'] : null;
             
             if (!empty($direct_elementor_data) && $this->is_elementor_active()) {
-                // Direct Elementor JSON provided - use it as-is
                 $elementor_json = is_string($direct_elementor_data) ? $direct_elementor_data : json_encode($direct_elementor_data);
+                
+                // Validate widget compatibility and warn about missing addons
+                $compat = $this->validate_widget_compatibility($elementor_json);
+                if (!empty($compat['warnings'])) {
+                    $warnings = array_merge($warnings, $compat['warnings']);
+                }
+                
                 update_post_meta($page_id, '_elementor_data', wp_slash($elementor_json));
                 update_post_meta($page_id, '_elementor_edit_mode', 'builder');
                 update_post_meta($page_id, '_elementor_template_type', 'wp-page');
                 update_post_meta($page_id, '_elementor_version', defined('ELEMENTOR_VERSION') ? ELEMENTOR_VERSION : '3.0.0');
                 
-                // Clear Elementor cache
+                // Clear cache and regenerate page CSS for addon widgets
                 if (class_exists('\Elementor\Plugin')) {
                     \Elementor\Plugin::$instance->files_manager->clear_cache();
+                    if (class_exists('\Elementor\Core\Files\CSS\Post')) {
+                        $post_css = \Elementor\Core\Files\CSS\Post::create($page_id);
+                        $post_css->update();
+                    }
                 }
             } else {
                 // Option 2: Convert HTML to Elementor format if enabled
@@ -446,9 +510,12 @@ class Echo5_Publisher {
                         update_post_meta($page_id, '_elementor_template_type', 'wp-page');
                         update_post_meta($page_id, '_elementor_version', defined('ELEMENTOR_VERSION') ? ELEMENTOR_VERSION : '3.0.0');
                         
-                        // Clear Elementor cache for this page
                         if (class_exists('\Elementor\Plugin')) {
                             \Elementor\Plugin::$instance->files_manager->clear_cache();
+                            if (class_exists('\Elementor\Core\Files\CSS\Post')) {
+                                $post_css = \Elementor\Core\Files\CSS\Post::create($page_id);
+                                $post_css->update();
+                            }
                         }
                     }
                 }
@@ -1032,16 +1099,76 @@ class Echo5_Publisher {
     }
     
     /**
-     * Wrap content with Echo5 styles
-     * Lightweight wrapper — CSS is already included in the AI-generated HTML
+     * Wrap content with Tailwind CSS
+     * Adds Tailwind CDN and wraps content in a styled container
      */
-    private function wrap_with_echo5_styles($html) {
-        // Check if content already has the wrapper
-        if (strpos($html, 'echo5-page-content') !== false) {
+    private function wrap_with_tailwind($html) {
+        // Check if content already has Tailwind wrapper
+        if (strpos($html, 'echo5-tailwind-content') !== false) {
             return $html;
         }
         
-        return '<div class="echo5-page-content">' . $html . '</div>';
+        // Tailwind CDN script with config for WordPress compatibility
+        $tailwind_cdn = '
+<!-- Echo5 Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+    prefix: "",
+    important: ".echo5-tailwind-content",
+    corePlugins: {
+        preflight: false, // Disable base reset to avoid conflicts with WordPress
+    },
+    theme: {
+        extend: {
+            colors: {
+                primary: "#3b82f6",
+                secondary: "#64748b",
+            }
+        }
+    }
+}
+</script>
+<style>
+.echo5-tailwind-content {
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+}
+.echo5-tailwind-content * {
+    box-sizing: border-box;
+}
+.echo5-tailwind-content h1, 
+.echo5-tailwind-content h2, 
+.echo5-tailwind-content h3, 
+.echo5-tailwind-content h4, 
+.echo5-tailwind-content h5, 
+.echo5-tailwind-content h6 {
+    font-weight: 700;
+    line-height: 1.25;
+    margin-bottom: 0.5em;
+}
+.echo5-tailwind-content h1 { font-size: 2.25rem; }
+.echo5-tailwind-content h2 { font-size: 1.875rem; }
+.echo5-tailwind-content h3 { font-size: 1.5rem; }
+.echo5-tailwind-content p { margin-bottom: 1rem; }
+.echo5-tailwind-content ul, .echo5-tailwind-content ol { margin-bottom: 1rem; padding-left: 1.5rem; }
+.echo5-tailwind-content li { margin-bottom: 0.25rem; }
+.echo5-tailwind-content a { color: #3b82f6; text-decoration: underline; }
+.echo5-tailwind-content a:hover { color: #2563eb; }
+.echo5-tailwind-content img { max-width: 100%; height: auto; }
+.echo5-tailwind-content .bg-gradient-to-r { background-image: linear-gradient(to right, var(--tw-gradient-stops)); }
+.echo5-tailwind-content .bg-gradient-to-br { background-image: linear-gradient(to bottom right, var(--tw-gradient-stops)); }
+</style>
+<!-- End Echo5 Tailwind CSS -->
+';
+        
+        // Wrap content in container
+        $wrapped = $tailwind_cdn . '
+<div class="echo5-tailwind-content">
+' . $html . '
+</div>';
+        
+        return $wrapped;
     }
     
     /**
@@ -1114,7 +1241,54 @@ class Echo5_Publisher {
     private function is_elementor_active() {
         return defined('ELEMENTOR_VERSION') || class_exists('\Elementor\Plugin');
     }
-    
+
+    /**
+     * Scan elementor_data for widget types and check if required addons are installed.
+     * Returns warnings (not errors) as the backend should have already mapped fallbacks.
+     */
+    private function validate_widget_compatibility($elementor_json) {
+        $warnings = array();
+        $decoded = is_string($elementor_json) ? json_decode($elementor_json, true) : $elementor_json;
+        if (!is_array($decoded)) {
+            return array('warnings' => $warnings);
+        }
+
+        $has_wpr = false;
+        $has_pro = false;
+
+        $pro_widget_types = array(
+            'form', 'posts', 'portfolio', 'slides', 'flip-box', 'price-table',
+            'price-list', 'testimonial-carousel', 'animated-headline',
+            'call-to-action', 'media-carousel', 'countdown', 'share-buttons',
+            'blockquote', 'login', 'hotspot', 'reviews', 'lottie'
+        );
+
+        $scan = function($elements) use (&$scan, &$has_wpr, &$has_pro, $pro_widget_types) {
+            if (!is_array($elements)) return;
+            foreach ($elements as $el) {
+                $type = isset($el['widgetType']) ? $el['widgetType'] : '';
+                if (strpos($type, 'wpr-') === 0) $has_wpr = true;
+                if (in_array($type, $pro_widget_types, true)) $has_pro = true;
+                if (!empty($el['elements'])) $scan($el['elements']);
+            }
+        };
+        $scan($decoded);
+
+        $royal_active = defined('WPR_ADDONS_VERSION')
+            || (function_exists('is_plugin_active') && is_plugin_active('royal-elementor-addons/royal-elementor-addons.php'));
+        $pro_active = defined('ELEMENTOR_PRO_VERSION') || defined('PRO_ELEMENTS_VERSION')
+            || (function_exists('is_plugin_active') && is_plugin_active('pro-elements/pro-elements.php'));
+
+        if ($has_wpr && !$royal_active) {
+            $warnings[] = 'Page contains Royal Elementor Addons widgets (wpr-*) but the plugin is not active. These widgets may not render correctly.';
+        }
+        if ($has_pro && !$pro_active) {
+            $warnings[] = 'Page contains Elementor Pro / Pro Elements widgets but neither plugin is active. These widgets may not render correctly.';
+        }
+
+        return array('warnings' => $warnings);
+    }
+
     /**
      * Convert HTML content to Elementor JSON format
      * Creates proper sections, containers, and widgets from HTML structure
@@ -1544,6 +1718,12 @@ class Echo5_Publisher {
                 ),
                 'image_size' => 'full',
                 'align' => 'center',
+                'width' => array('unit' => '%', 'size' => 100),
+                'width_mobile' => array('unit' => '%', 'size' => 100),
+                'height' => array('unit' => 'px', 'size' => 400),
+                'height_tablet' => array('unit' => 'px', 'size' => 320),
+                'height_mobile' => array('unit' => 'px', 'size' => 240),
+                'object_fit' => 'cover',
             ),
             'elements' => array(),
         );
