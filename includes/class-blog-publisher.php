@@ -78,6 +78,7 @@ class Echo5_Blog_Publisher {
         $inline_images           = $request->get_param( 'inline_images' ) ?: array();
         $yoast                   = $request->get_param( 'yoast' ) ?: array();
         $featured_is_first_inline = (bool) $request->get_param( 'featured_is_first_inline' );
+        $slug                     = sanitize_title( $request->get_param( 'slug' ) ?: '' );
 
         // Validate required fields
         if ( empty( $title ) ) {
@@ -121,12 +122,16 @@ class Echo5_Blog_Publisher {
         }
 
         // --- Create the WordPress post ----------------------------------------
-        $post_id = wp_insert_post( array(
+        $post_data = array(
             'post_title'   => $title,
             'post_content' => wp_kses_post( $processed_content ),
             'post_status'  => $status,
             'post_type'    => 'post',
-        ) );
+        );
+        if ( ! empty( $slug ) ) {
+            $post_data['post_name'] = $slug;
+        }
+        $post_id = wp_insert_post( $post_data );
 
         if ( is_wp_error( $post_id ) ) {
             return new WP_REST_Response( array(
