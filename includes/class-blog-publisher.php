@@ -260,9 +260,10 @@ class Echo5_Blog_Publisher {
             return new WP_Error( 'invalid_base64', 'Could not decode base64 image data' );
         }
 
-        // Generate a unique file name
+        // Generate a unique file name with publish date prefix (YYYY-MM-DD)
         $filename = sanitize_file_name(
-            ( ! empty( $alt ) ? substr( sanitize_title( $alt ), 0, 40 ) : 'cropped-image' )
+            date( 'Y-m-d' ) . '-'
+            . ( ! empty( $alt ) ? substr( sanitize_title( $alt ), 0, 40 ) : 'blog-image' )
             . '-' . substr( md5( $decoded ), 0, 6 )
             . '.' . $ext
         );
