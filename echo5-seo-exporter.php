@@ -3,7 +3,7 @@
  * Plugin Name: Echo5 Seo Manager Plugin
  * Plugin URI: https://echo5digital.com
  * Description: Exports complete SEO data via REST API for Echo5 SEO Management Platform - Now with Publishing support!
- * Version: 2.2.4
+ * Version: 2.3.0
  * Author: Echo5 Digital
  * Author URI: https://echo5digital.com
  * License: GPL v2 or later
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('ECHO5_SEO_VERSION', '2.2.4');
+define('ECHO5_SEO_VERSION', '2.3.0');
 define('ECHO5_SEO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('ECHO5_SEO_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -36,6 +36,9 @@ require_once ECHO5_SEO_PLUGIN_DIR . 'includes/class-publish-logger.php';
 // Include required files - Brand Extraction (v2.1)
 require_once ECHO5_SEO_PLUGIN_DIR . 'includes/class-brand-extractor.php';
 
+// Include required files - Blog Publisher (v2.3)
+require_once ECHO5_SEO_PLUGIN_DIR . 'includes/class-blog-publisher.php';
+
 /**
  * Main Plugin Class
  */
@@ -54,6 +57,9 @@ class Echo5_SEO_Exporter {
     private $media_handler;
     private $seo_meta_handler;
     private $publish_logger;
+
+    // Blog Publisher (v2.3)
+    private $blog_publisher;
     
     /**
      * Get singleton instance
@@ -100,10 +106,17 @@ class Echo5_SEO_Exporter {
             $this->seo_meta_handler,
             $this->publish_logger
         );
-        
+
+        // Initialize blog publisher (v2.3)
+        $this->blog_publisher = new Echo5_Blog_Publisher(
+            $this->security,
+            $this->media_handler
+        );
+
         // Register hooks
         add_action('rest_api_init', array($this->api_handler, 'register_routes'));
         add_action('rest_api_init', array($this->publisher, 'register_routes'));
+        add_action('rest_api_init', array($this->blog_publisher, 'register_routes'));
         add_action('admin_menu', array($this->settings, 'add_settings_page'));
         add_action('admin_init', array($this->settings, 'register_settings'));
         
