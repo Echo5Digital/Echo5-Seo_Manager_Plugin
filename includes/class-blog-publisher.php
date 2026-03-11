@@ -75,6 +75,7 @@ class Echo5_Blog_Publisher {
         $category_slug           = sanitize_text_field( $request->get_param( 'category_slug' ) ?: 'blog' );
         $featured_image_url      = esc_url_raw( $request->get_param( 'featured_image_url' ) ?: '' );
         $featured_image_alt      = sanitize_text_field( $request->get_param( 'featured_image_alt' ) ?: '' );
+        $featured_image_base64   = $request->get_param( 'featured_image_base64' ) ?: '';
         $inline_images           = $request->get_param( 'inline_images' ) ?: array();
         $yoast                   = $request->get_param( 'yoast' ) ?: array();
         $featured_is_first_inline = (bool) $request->get_param( 'featured_is_first_inline' );
@@ -106,14 +107,20 @@ class Echo5_Blog_Publisher {
                     // Same image as featured — remove the marker to avoid showing the image twice
                     $processed_content = str_replace( $marker, '', $processed_content );
                 } else {
-                    if ( ! empty( $img_url ) ) {
+                    $img_base64 = isset( $img['base64'] ) ? $img['base64'] : '';
+
+                    if ( ! empty( $img_base64 ) ) {
+                        // Cropped image from frontend — save base64 directly
+                        $result = $this->save_base64_image( $img_base64, $img_alt );
+                        $uploaded_url = is_wp_error( $result ) ? '' : $result['url'];
+                    } elseif ( ! empty( $img_url ) ) {
                         $result = $this->media_handler->upload_image( $img_url, $img_alt );
-                        // On failure fall back to the original external URL — never abort
-                        if ( is_wp_error( $result ) ) {
-                            $uploaded_url = $img_url;
-                        } else {
-                            $uploaded_url = $result['url'];
-                        }
+                        $uploaded_url = is_wp_error( $result ) ? $img_url : $result['url'];
+                    } else {
+                        $uploaded_url = '';
+                    }
+
+                    if ( ! empty( $uploaded_url ) ) {
                         $figure = '<figure><img src="' . esc_url( $uploaded_url ) . '" alt="' . esc_attr( $img_alt ) . '" /></figure>';
                         $processed_content = str_replace( $marker, $figure, $processed_content );
                     }
@@ -141,9 +148,19 @@ class Echo5_Blog_Publisher {
         }
 
         // --- Featured image ---------------------------------------------------
-        if ( ! empty( $featured_image_url ) ) {
+        if ( ! empty( $featured_image_base64 ) ) {
+            // Cropped image from frontend — save base64 and set as featured
+            $b64_result = $this->save_base64_image( $featured_image_base64, $featured_image_alt );
+            if ( ! is_wp_error( $b64_result ) ) {
+                $set_ok = set_post_thumbnail( $post_id, $b64_result['id'] );
+                if ( ! $set_ok ) {
+                    error_log( '[Echo5 Blog Publisher] Failed to set cropped featured image for post ' . $post_id );
+                }
+            } else {
+                error_log( '[Echo5 Blog Publisher] Base64 featured image failed: ' . $b64_result->get_error_message() );
+            }
+        } elseif ( ! empty( $featured_image_url ) ) {
             $thumb_result = $this->media_handler->set_featured_image( $post_id, $featured_image_url, $featured_image_alt );
-            // Log failure but do not abort the whole publish
             if ( is_wp_error( $thumb_result ) ) {
                 error_log( '[Echo5 Blog Publisher] Featured image failed for post ' . $post_id . ': ' . $thumb_result->get_error_message() );
             }
@@ -188,5 +205,83 @@ class Echo5_Blog_Publisher {
         return wp_send_json_success( array(
             'exists' => ! is_null( $existing ),
         ) );
+    }
+
+    /**
+     * Save a base64-encoded image (from the frontend crop canvas) into the
+     * WordPress media library with proper ALT text.
+     *
+     * Accepts a data URI like "data:image/jpeg;base64,/9j/4AAQ..."
+     * or a raw base64 string (auto-detects JPEG by default).
+     *
+     * @param string $base64  Base64-encoded image (with or without data URI prefix)
+     * @param string $alt     ALT text for the attachment
+     * @return array|WP_Error { id, url } on success
+     */
+    private function save_base64_image( $base64, $alt = '' ) {
+        // Parse data URI prefix if present
+        $mime = 'image/jpeg';
+        $ext  = 'jpg';
+
+        if ( preg_match( '/^data:(image\/\w+);base64,/', $base64, $matches ) ) {
+            $mime   = $matches[1];
+            $base64 = substr( $base64, strlen( $matches[0] ) );
+
+            $ext_map = array(
+                'image/jpeg' => 'jpg',
+                'image/png'  => 'png',
+                'image/webp' => 'webp',
+                'image/gif'  => 'gif',
+            );
+            $ext = isset( $ext_map[ $mime ] ) ? $ext_map[ $mime ] : 'jpg';
+        }
+
+        $decoded = base64_decode( $base64, true );
+        if ( false === $decoded || strlen( $decoded ) < 100 ) {
+            return new WP_Error( 'invalid_base64', 'Could not decode base64 image data' );
+        }
+
+        // Generate a unique file name
+        $filename = sanitize_file_name(
+            ( ! empty( $alt ) ? substr( sanitize_title( $alt ), 0, 40 ) : 'cropped-image' )
+            . '-' . substr( md5( $decoded ), 0, 6 )
+            . '.' . $ext
+        );
+
+        $upload = wp_upload_bits( $filename, null, $decoded );
+        if ( ! empty( $upload['error'] ) ) {
+            return new WP_Error( 'upload_failed', 'wp_upload_bits error: ' . $upload['error'] );
+        }
+
+        // Create attachment post
+        $attachment_id = wp_insert_attachment(
+            array(
+                'post_mime_type' => $mime,
+                'post_title'    => ! empty( $alt ) ? sanitize_text_field( $alt ) : 'Cropped Image',
+                'post_content'  => '',
+                'post_status'   => 'inherit',
+            ),
+            $upload['file']
+        );
+
+        if ( is_wp_error( $attachment_id ) ) {
+            @unlink( $upload['file'] );
+            return $attachment_id;
+        }
+
+        // Generate all image sizes / metadata
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        $metadata = wp_generate_attachment_metadata( $attachment_id, $upload['file'] );
+        wp_update_attachment_metadata( $attachment_id, $metadata );
+
+        // Set ALT text
+        if ( ! empty( $alt ) ) {
+            update_post_meta( $attachment_id, '_wp_attachment_image_alt', sanitize_text_field( $alt ) );
+        }
+
+        return array(
+            'id'  => $attachment_id,
+            'url' => $upload['url'],
+        );
     }
 }
