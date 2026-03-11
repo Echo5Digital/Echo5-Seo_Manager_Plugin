@@ -80,6 +80,7 @@ class Echo5_Blog_Publisher {
         $yoast                   = $request->get_param( 'yoast' ) ?: array();
         $featured_is_first_inline = (bool) $request->get_param( 'featured_is_first_inline' );
         $slug                     = sanitize_title( $request->get_param( 'slug' ) ?: '' );
+        $author_name              = sanitize_text_field( $request->get_param( 'author_name' ) ?: '' );
 
         // Validate required fields
         if ( empty( $title ) ) {
@@ -128,6 +129,21 @@ class Echo5_Blog_Publisher {
             }
         }
 
+        // --- Resolve author ---------------------------------------------------
+        $post_author_id = 0; // 0 = use WordPress default (current user / admin)
+        if ( ! empty( $author_name ) ) {
+            // Try matching a WP user by display_name first, then user_login
+            $user_by_display = get_users( array(
+                'search'         => $author_name,
+                'search_columns' => array( 'display_name', 'user_login', 'user_nicename' ),
+                'number'         => 1,
+                'fields'         => array( 'ID' ),
+            ) );
+            if ( ! empty( $user_by_display ) ) {
+                $post_author_id = (int) $user_by_display[0]->ID;
+            }
+        }
+
         // --- Create the WordPress post ----------------------------------------
         $post_data = array(
             'post_title'   => $title,
@@ -137,6 +153,9 @@ class Echo5_Blog_Publisher {
         );
         if ( ! empty( $slug ) ) {
             $post_data['post_name'] = $slug;
+        }
+        if ( $post_author_id > 0 ) {
+            $post_data['post_author'] = $post_author_id;
         }
         $post_id = wp_insert_post( $post_data );
 
