@@ -38,6 +38,7 @@ Copy-Item -Path "$PluginDir\includes\class-publisher.php" -Destination "$LocalPl
 Copy-Item -Path "$PluginDir\includes\class-media-handler.php" -Destination "$LocalPluginDir\includes\class-media-handler.php" -Force
 Copy-Item -Path "$PluginDir\includes\class-seo-meta-handler.php" -Destination "$LocalPluginDir\includes\class-seo-meta-handler.php" -Force
 Copy-Item -Path "$PluginDir\includes\class-publish-logger.php" -Destination "$LocalPluginDir\includes\class-publish-logger.php" -Force
+Copy-Item -Path "$PluginDir\includes\class-blog-publisher.php" -Destination "$LocalPluginDir\includes\class-blog-publisher.php" -Force
 
 # Admin folder
 Copy-Item -Path "$PluginDir\admin\class-settings.php" -Destination "$LocalPluginDir\admin\class-settings.php" -Force
