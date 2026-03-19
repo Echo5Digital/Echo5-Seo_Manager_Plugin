@@ -4,7 +4,13 @@
  */
 
 class Echo5_SEO_Data_Exporter {
-    
+
+    /**
+     * Holds JSON-LD schemas extracted from the last rendered-HTML fetch.
+     * Populated by extract_content_blocks_smart() and consumed by format_page_data().
+     */
+    private $last_extracted_schemas = array();
+
     /**
      * Get pages with full SEO data
      */
@@ -191,7 +197,12 @@ class Echo5_SEO_Data_Exporter {
         
         // Get SEO plugin data (Yoast, RankMath, etc.)
         $seo_data = $this->get_post_seo_data($post->ID);
-        
+
+        // Inject JSON-LD schemas extracted from the rendered HTML (populated by extract_content_blocks_smart above)
+        if (!empty($this->last_extracted_schemas)) {
+            $seo_data['schema'] = $this->last_extracted_schemas;
+        }
+
         // Get featured image
         $featured_image = get_the_post_thumbnail_url($post->ID, 'full');
         
@@ -270,6 +281,9 @@ class Echo5_SEO_Data_Exporter {
      * This mimics what users see in the browser and handles Elementor layouts correctly
      */
     private function extract_content_blocks_smart($post_id, $html_content) {
+        // Reset schemas for this page
+        $this->last_extracted_schemas = array();
+
         // Method 1: Fetch the actual rendered page HTML (most accurate for Elementor multi-column layouts)
         $page_url = get_permalink($post_id);
         if ($page_url) {
@@ -278,10 +292,13 @@ class Echo5_SEO_Data_Exporter {
                 'sslverify' => false,
                 'user-agent' => 'Echo5-SEO-Manager/1.1.3 (WordPress Plugin)'
             ));
-            
+
             if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
                 $rendered_html = wp_remote_retrieve_body($response);
                 if (!empty($rendered_html)) {
+                    // Extract JSON-LD structured data schemas from the rendered page
+                    $this->last_extracted_schemas = $this->extract_jsonld_from_html($rendered_html);
+
                     // Extract content from main content area only (skip header/footer/sidebar)
                     $blocks = $this->extract_content_blocks_from_main($rendered_html);
                     if (!empty($blocks)) {
@@ -305,7 +322,27 @@ class Echo5_SEO_Data_Exporter {
         // Method 3: Fallback to the_content HTML parsing
         return $this->extract_content_blocks($html_content);
     }
-    
+
+    /**
+     * Extract all JSON-LD structured data schemas from a rendered HTML page.
+     * Returns an array of decoded schema objects (may be empty if none found).
+     */
+    private function extract_jsonld_from_html($html) {
+        $schemas = array();
+        preg_match_all(
+            '/<script[^>]+type=["\']application\/ld\+json["\'][^>]*>(.*?)<\/script>/si',
+            $html,
+            $matches
+        );
+        foreach ($matches[1] as $json_str) {
+            $decoded = json_decode(trim($json_str), true);
+            if ($decoded) {
+                $schemas[] = $decoded;
+            }
+        }
+        return $schemas;
+    }
+
     /**
      * Extract content blocks from the main content area of a full page HTML
      * This skips header, footer, sidebar elements
